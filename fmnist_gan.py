@@ -69,7 +69,6 @@ def predict(checkpoint, noise_size, n_predictions=10):
         print('Prediction {}: {}'.format(i, pred[0]))
 
 def train(nepochs, batch_size, noise_size, checkpoint):
-
     training_dataset, nbatches = train_data(batch_size)
     iterator = training_dataset.make_initializable_iterator()
     next_element = iterator.get_next()
@@ -80,13 +79,13 @@ def train(nepochs, batch_size, noise_size, checkpoint):
     
     with tf.variable_scope('G'):
         gen_data_ph = tf.placeholder(tf.float32, shape=[None, noise_size], name='gen_data_ph')
-        G_sample = dcgan_generator_mnist(gen_data_ph, dropout_prob_ph)
+        G_sample = dcgan_generator_mnist(gen_data_ph, None, dropout_prob_ph)
 
     with tf.variable_scope('D') as scope:
         data_ph = tf.placeholder(tf.float32, shape=[None, 28, 28], name='data_ph')   
-        D_real_logits, D_real = dcgan_discriminator_mnist(data_ph, dropout_prob_ph)
+        D_real_logits, D_real, D_feats_real = dcgan_discriminator_mnist(data_ph, None, dropout_prob_ph)
     with tf.variable_scope('D', reuse=True):
-        D_fake_logits, D_fake = dcgan_discriminator_mnist(G_sample, dropout_prob_ph)
+        D_fake_logits, D_fake, D_feats_fake = dcgan_discriminator_mnist(G_sample, None, dropout_prob_ph)
         
     flip_prob = 0.333 #label flipping
     flip_arr = np.random.binomial(n=1, p=flip_prob, size=(nepochs, nbatches))
@@ -99,9 +98,9 @@ def train(nepochs, batch_size, noise_size, checkpoint):
     D_loss_real = cross_entropy(logits=D_real_logits, labels=real_labels_ph)
     D_loss_fake = cross_entropy(logits=D_fake_logits, labels=fake_labels_ph)
     gamma_ph = tf.placeholder(tf.float32, shape=[], name='gamma_ph')
-    D_loss_reg = tikhonov_regularizer(D_real_logits, data_ph, D_fake_logits, gen_data_ph, batch_size_ph)
-    D_loss = tf.reduce_mean(D_loss_real + D_loss_fake) #+ (gamma_ph/2.)*D_loss_reg
-    G_loss = tf.reduce_mean(cross_entropy(logits=D_fake_logits, labels=real_labels_ph))
+    D_loss_tik = tikhonov_regularizer(D_real_logits, data_ph, D_fake_logits, gen_data_ph, batch_size_ph)
+    D_loss = tf.reduce_mean(D_loss_real + D_loss_fake)  #+ (gamma_ph/2.)*D_loss_tik
+    G_loss = tf.reduce_mean(cross_entropy(logits=D_fake_logits, labels=real_labels_ph)) + 0.5*tf.square(tf.norm(tf.reduce_mean(D_feats_real - D_feats_fake)))
     
     tf.summary.scalar('D_loss', D_loss)
     tf.summary.scalar('G_loss', G_loss)
