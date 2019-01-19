@@ -109,7 +109,7 @@ def dcgan_discriminator_mnist(x, y=None, prob=0.):
     net = tf.pad(net, paddings=[[0,0],[2,2],[2,2],[0,0]], mode='CONSTANT', constant_values=0.)
 
     #condition concatenation for cGAN   
-    if y!=None:
+    if y != None:
         y = tf.reshape(y, shape=[-1, 1]) #(batch_size, 1)
         y = tf.tile(y, multiples=[1, 32*32])
         y = tf.reshape(y, shape=[-1, 32, 32, 1])
@@ -134,7 +134,7 @@ def dcgan_discriminator_mnist(x, y=None, prob=0.):
     net = tf.layers.dropout(net,rate=prob)
 
     net = tf.reshape(net, shape=[-1,filters[2]*4*4])    
-    net = minibatch_discrimination(net, num_kernels=5, kernel_dim=3)
+    net = minibatch_discrimination(net, num_kernels=20, kernel_dim=10)
 
     #return the second to last layer to allow the implementation of feature discrimination
     features = net
@@ -143,11 +143,11 @@ def dcgan_discriminator_mnist(x, y=None, prob=0.):
     return net, tf.nn.sigmoid(net, name='discriminator_logit'), features
 
 def dcgan_generator_mnist(noise, y=None, prob=0.):
-    filters = [256,128,64]
+    filters = [256, 128, 64]
 
     net = tf.reshape(noise, shape=[-1, noise.shape[1]])
     
-    if y!=None:
+    if y != None:
         y = tf.reshape(y, shape=[-1, 1])
         net = tf.concat([noise, y], axis=1)
 
