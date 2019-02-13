@@ -139,8 +139,8 @@ class _GAN():
             
         tf.summary.scalar('loss_d', self.D_loss)
         tf.summary.scalar('loss_g', self.G_loss)    
-        #log_tf_files(layers_names=self.layers_names, loss=self.D_loss, player='D')
-        #log_tf_files(layers_names=self.layers_names, loss=self.G_loss, player='G')
+        log_tf_files(layers_names=self.layers_names, loss=self.D_loss, player='D')
+        log_tf_files(layers_names=self.layers_names, loss=self.G_loss, player='G')
             
         D_optimizer = tf.train.AdamOptimizer(learning_rate=lr, beta1=beta1, beta2=beta2)
         G_optimizer = tf.train.AdamOptimizer(learning_rate=lr, beta1=beta1, beta2=beta2)
@@ -152,7 +152,14 @@ class _GAN():
         self.G_train_op = G_optimizer.minimize(self.G_loss, var_list=G_trainable_vars, 
                                                name='G_train_op')
 
-    def train(self, nepochs):
+    def train(self, nepochs, drop_d=0.7, drop_g=0.3):
+        """
+        Arguments:
+
+        nepochs: number of training epochs (one epoch corresponds to looking at every data item once)
+        drop_d: dropout in the discriminator
+        drop_g: dropout in the generator
+        """
         summary = tf.summary.merge_all()
         train_writer = tf.summary.FileWriter(self.tensorboard_dir, self.sess.graph)
 
@@ -163,8 +170,8 @@ class _GAN():
         flip_arr = np.random.binomial(n=1, p=flip_prob, size=(nepochs, self.nbatches))
         minval = 0.85 #smoothing
 
-        dropout_prob_D = 0.7 #Diabled: does it make sense to have dropout in a GAN?
-        dropout_prob_G = 0.3
+        dropout_prob_D = drop_d
+        dropout_prob_G = drop_g
 
         saver = tf.train.Saver(max_to_keep=5, keep_checkpoint_every_n_hours=1)
 
@@ -176,18 +183,16 @@ class _GAN():
             self.sess.run(iterator.initializer)
 
             for batch in range(self.nbatches):
-                inputs, *p = self.sess.run(next_element)
-                inputs = self._pre_process(inputs, p)
+                inputs, *params = self.sess.run(next_element)
+                inputs = self._pre_process(inputs, params)
 
                 #label flipping
                 for _ in range(self.d_iters):
                     if  flip_arr[epoch][batch] == 1:
                         real = np.zeros(shape=(len(inputs),1))
-                        fake = np.full(shape=(len(inputs),1), 
-                                       fill_value=np.random.uniform(low=minval, high=1.))
+                        fake = np.random.uniform(low=minval, high=1., size=(len(inputs),1))
                     else:
-                        real = np.full(shape=(len(inputs),1), 
-                                       fill_value=np.random.uniform(low=minval, high=1.))
+                        real = np.random.uniform(low=minval, high=1., size=(len(inputs),1))
                         fake = np.zeros(shape=(len(inputs),1))
 
                     #train discriminator
@@ -221,20 +226,22 @@ class _GAN():
                                                    self.dropout_prob_ph: dropout_prob_G,
                                                    self.batch_size_ph: self.batch_size,
                                                    self.real_labels_ph: real, self.fake_labels_ph: fake})
-            self._plot(inputs, sample, 
+            self._plot(inputs, sample, params, 
                        [self.data_name+'_data_'+str(epoch), self.data_name+'_gen_'+str(epoch)])
 
-    def _plot(self, real_data, gen_data, names):
-        p = PlotGenSamples()
+    def _plot(self, real_data, gen_data, params_data, names):
         if self.data_name == 'mnist' or self.data_name == 'fashion_mnist':
+            p = PlotGenSamples()
             p.plot_mnist(real_data[:36], names[0])
             p.plot_mnist(gen_data[:36], names[1])
         elif self.data_name == 'cifar10':
+            p = PlotGenSamples()
             p.plot_cifar10(real_data[:36], names[0])
             p.plot_cifar10(gen_data[:36], names[1])
         elif self.data_name == 'spectra':
-            p.plot_spectra(real_data[:5], names[0])
-            p.plot_spectra(gen_data[:5], names[1])
+            p = PlotGenSamples(nrows=5, ncols=1)
+            p.plot_spectra(real_data[:5], params_data[0][:5], names[0])
+            p.plot_spectra(gen_data[:5], params_data[0][:5], names[1])
         else: #this can be changed as more datasets are considered
             raise Exception('What should I plot?')
 
@@ -274,7 +281,7 @@ class DCGAN(_GAN):
             nn = tf.nn.leaky_relu(nn, alpha=alpha)
             if self.mode != 'wgan-gp':
                 nn = tf.layers.batch_normalization(nn)
-            #nn = tf.layers.dropout(nn, rate=drop)
+            nn = tf.layers.dropout(nn, rate=drop)
             return nn
 
         net = tf.reshape(x, shape=[-1, self.in_height, self.in_width, self.nchannels])
@@ -284,29 +291,41 @@ class DCGAN(_GAN):
             net = tf.pad(net, paddings=[[0,0],[2,2],[2,2],[0,0]], mode='CONSTANT', constant_values=0.)
 
         if self.data_name in self.image_datasets:
+            self.layers_names += ('layer1',)
             net = conv_block(net, conv_channels=self.filters[0], 
-                             kernel_size=[5,5], strides=[2,2], name='layer1')
+                             kernel_size=[5,5], strides=[2,2], name=self.layers_names[-1])
+            self.layers_names += ('layer2',)
             net = conv_block(net, conv_channels=self.filters[1], 
-                             kernel_size=[5,5], strides=[2,2], name='layer2')
+                             kernel_size=[5,5], strides=[2,2], name=self.layers_names[-1])
+            self.layers_names += ('layer3',)
             net = conv_block(net, conv_channels=self.filters[2], 
-                             kernel_size=[5,5], strides=[2,2], name='layer3')
+                             kernel_size=[5,5], strides=[2,2], name=self.layers_names[-1])
         elif self.data_name == 'spectra':
+            self.layers_names += ('layer1',)
             net = conv_block(net, conv_channels=self.filters[0], 
-                             kernel_size=[10,1], strides=[5,1], name='layer1')
+                             kernel_size=[10,1], strides=[5,1], name=self.layers_names[-1])
+            self.layers_names += ('layer2',)
             net = conv_block(net, conv_channels=self.filters[1], 
-                             kernel_size=[10,1], strides=[5,1], name='layer2')
+                             kernel_size=[10,1], strides=[5,1], name=self.layers_names[-1])
+            self.layers_names += ('layer3',)
             net = conv_block(net, conv_channels=self.filters[2], 
-                             kernel_size=[10,1], strides=[5,1], name='layer3')
+                             kernel_size=[10,1], strides=[5,1], name=self.layers_names[-1])
+            self.layers_names += ('layer4',)
             net = conv_block(net, conv_channels=self.filters[3], 
-                             kernel_size=[10,1], strides=[4,1], name='layer4')
+                             kernel_size=[10,1], strides=[4,1], name=self.layers_names[-1])
             
 
-        final_shape = net.get_shape()
-        net = tf.reshape(net, shape=[-1,self.filters[3]*final_shape[1]*final_shape[2]])
+            final_shape = net.get_shape()
+            net = tf.reshape(net, shape=[-1,self.filters[-1]*final_shape[1]*final_shape[2]])
+
         if self.mode != 'wgan-gp':
-            net = minibatch_discrimination(net, num_kernels=30, kernel_dim=20)
+            self.layers_names += ('minibatch_discrimination',)
+            net = minibatch_discrimination(net, num_kernels=30, kernel_dim=20, 
+                                           name=self.layers_names[-1])
+
+        self.layers_names += ('dense_output',)
         net = tf.layers.dense(net, 1, activation=None, 
-                              name='layer_dense')
+                              name=self.layers_names[-1])
         return net, tf.nn.sigmoid(net, name='logit')
     
     def _generator(self, noise, drop):
@@ -322,41 +341,50 @@ class DCGAN(_GAN):
             nn = tf.nn.relu(nn)
             if self.mode != 'wgan-gp':
                 nn = tf.layers.batch_normalization(nn)
-            #nn = tf.layers.dropout(nn, rate=0.2)
+            nn = tf.layers.dropout(nn, rate=drop)
             return nn
         
         net = tf.reshape(noise, shape=[-1, noise.shape[1]])
 
         net = tf.layers.dense(net, init_height*init_width*self.filters[-1], activation=None)
-        #net = tf.layers.dropout(net, rate=drop)
+        net = tf.layers.dropout(net, rate=drop)
         net = tf.reshape(net, shape=[-1,init_height,init_width,self.filters[-1]])
 
         if self.data_name in self.image_datasets:
+            self.layers_names += ('layer1',)
             net = conv_block(net, conv_channels=self.filters[-2], 
-                             kernel_size=[5,5], strides=[2,2], name='layer1')
+                             kernel_size=[5,5], strides=[2,2], name=self.layers_names[-1])
+            self.layers_names += ('layer1',)
             net = conv_block(net, conv_channels=self.filters[-3], 
-                             kernel_size=[5,5], strides=[2,2], name='layer2')
+                             kernel_size=[5,5], strides=[2,2], name=self.layers_names[-1])
+            self.layers_names += ('layer3',)
             net = tf.layers.conv2d_transpose(net, filters=self.nchannels, kernel_size=[5,5], 
                                              strides=[2,2], activation=None, padding='same', 
-                                             name='layer3')
+                                             name=self.layers_names[-1])
             if self.data_name == 'mnist' or self.data_name == 'fashion_mnist':
                 net = tf.slice(net, begin=[0,2,2,0], size=[-1,self.in_width,self.in_height,-1])
             net = tf.divide( tf.add(tf.nn.tanh(net),1.), 2.)
 
         elif self.data_name == 'spectra':
+            self.layers_names += ('layer1',)
             net = conv_block(net, conv_channels=self.filters[-2], 
-                             kernel_size=[10,1], strides=[4,1], name='layer1')
+                             kernel_size=[10,1], strides=[4,1], name=self.layers_names[-1])
+            self.layers_names += ('layer2',)
             net = conv_block(net, conv_channels=self.filters[-3], 
-                             kernel_size=[10,1], strides=[5,1], name='layer2')
+                             kernel_size=[10,1], strides=[5,1], name=self.layers_names[-1])
+            self.layers_names += ('layer3',)
             net = conv_block(net, conv_channels=self.filters[-4], 
-                             kernel_size=[10,1], strides=[5,1], name='layer3')
+                             kernel_size=[10,1], strides=[5,1], name=self.layers_names[-1])
+            self.layers_names += ('layer4',)
             net = tf.layers.conv2d_transpose(net, filters=self.nchannels, 
                                              kernel_size=[10,1], strides=[5,1], 
-                                             activation=None, padding='same', name='layer4')
+                                             activation=None, padding='same', 
+                                             name=self.layers_names[-1]))
             if self.mode != 'wgan-gp':
                 net = tf.layers.batch_normalization(net)
             net = tf.nn.tanh(net)
-        #net = tf.layers.dropout(net,rate=0.2)
+
+        net = tf.layers.dropout(net,rate=drop)
         return tf.reshape(net, shape=[-1, self.in_height, self.in_width, self.nchannels], 
                           name='output')        
 
