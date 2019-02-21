@@ -29,7 +29,10 @@ def main(argv=None):
         if FLAGS.mode == 'train':
             dcgan.train(nepochs, drop_d=0.0, drop_g=0.0)
         elif FLAGS.mode == 'generate':
-            dcgan.generate(n=5, name='generate')
+            dcgan.generate(N=3, n_per_plot=5, name='generate')
+        elif FLAGS.mode == 'predict':
+            dcgan.predict(n_pred=514)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
