@@ -1,13 +1,14 @@
 import os
+import abc
 import numpy as np
 #np.set_printoptions(threshold=np.nan)
 import tensorflow as tf
 from src.utilities import log_tf_files, tboard_concat
-from src.utilities import PlotGenSamples
+from src.utilities import PlotGenSamples, plot_predictions
 from src.models.utilities import minibatch_discrimination, noise
 from src.data.data import read_spectra_data as read_data
 
-class _GAN():
+class _GAN(abc.ABC):
     """
     Base class for all the implemented GAN-like models.
     """
@@ -56,6 +57,15 @@ class _GAN():
         self.alpha = 0.2 #leaky relu parameter
         self.image_datasets = {'mnist', 'fashion_mnist', 'cifar10'}
         self.d_layers_names, self.g_layers_names = (() for _ in range(2))
+        self.mid_layers = () #intermediate layers
+
+    @abc.abstractmethod
+    def _generator(self, noise, drop):
+        raise NotImplementedError('Please implement the generator in your subclass.')
+
+    @abc.abstractmethod
+    def _discriminator(self, noise, drop):
+        raise NotImplementedError('Please implement the discriminator in your subclass.')
 
     def _load_data(self):
         if self.data_name in self.image_datasets:
@@ -100,6 +110,7 @@ class _GAN():
         self.real_labels_ph = tf.placeholder(tf.float32, name='real_labels_ph')
         self.fake_labels_ph = tf.placeholder(tf.float32, name='fake_labels_ph')
         self.dropout_prob_ph = tf.placeholder(tf.float32, shape=(), name='dropout_prob_ph')
+        self.batch_norm_ph = tf.placeholder_with_default(True, shape=(), name='batch_norm_ph')
         
         with tf.variable_scope('G'):
             self.gen_data_ph = tf.placeholder(tf.float32, shape=[None, self.noise_dim], 
@@ -110,10 +121,12 @@ class _GAN():
             self.data_ph = tf.placeholder(tf.float32, 
                                           shape=[None, self.in_height, self.in_width, self.nchannels], 
                                           name='data_ph')   
-            self.D_real_logits, self.D_real = discriminator(self.data_ph, drop=self.dropout_prob_ph)
+            self.D_real_logits, self.D_real, self.mid_real = discriminator(self.data_ph, 
+                                                                           drop=self.dropout_prob_ph)
 
         with tf.variable_scope('D', reuse=True):
-            self.D_fake_logits, self.D_fake = discriminator(self.G_sample, drop=self.dropout_prob_ph)
+            self.D_fake_logits, self.D_fake, self.mid_fake = discriminator(self.G_sample, 
+                                                                           drop=self.dropout_prob_ph)
 
         #Gradient Penalty
         if self.mode=='wgan-gp':
@@ -170,10 +183,12 @@ class _GAN():
         D_trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'D')
         G_trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'G')
         
-        self.D_train_op = D_optimizer.minimize(self.D_loss, var_list=D_trainable_vars, 
-                                               name='D_train_op')
-        self.G_train_op = G_optimizer.minimize(self.G_loss, var_list=G_trainable_vars, 
-                                               name='G_train_op')
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        with tf.control_dependencies(update_ops):
+            self.D_train_op = D_optimizer.minimize(self.D_loss, var_list=D_trainable_vars, 
+                                                   name='D_train_op')
+            self.G_train_op = G_optimizer.minimize(self.G_loss, var_list=G_trainable_vars, 
+                                                   name='G_train_op')
 
     def train(self, nepochs, drop_d=0.7, drop_g=0.3):
         """
@@ -267,47 +282,77 @@ class _GAN():
             self._plot(inputs, params, self.pics_save_names[0]+str(epoch), n=5)
             self._plot(sample, params, self.pics_save_names[1]+str(epoch), n=5)
 
-    def _plot(self, data, params_data, name, n=5):
-        if self.data_name == 'mnist' or self.data_name == 'fashion_mnist':
-            p = PlotGenSamples()
-            p.plot_mnist(data[:36], name)
-            print(name)
-        elif self.data_name == 'cifar10':
-            p = PlotGenSamples()
-            p.plot_cifar10(data[:36], name)
-        elif self.data_name == 'spectra':
-            p = PlotGenSamples(nrows=n, ncols=1)
-            p.plot_spectra(data[:n], params_data[0][:n], name)
-        else: 
-            raise Exception('What should I plot?')
+    def _plot(self, data, params_data, name, n=5, mode='normal'):
+        if mode=='normal':
+            if self.data_name == 'mnist' or self.data_name == 'fashion_mnist':
+                p = PlotGenSamples()
+                p.plot_mnist(data[:36], name)
+            elif self.data_name == 'cifar10':
+                p = PlotGenSamples()
+                p.plot_cifar10(data[:36], name)
+            elif self.data_name == 'spectra':
+                p = PlotGenSamples(nrows=n, ncols=1)
+                p.plot_spectra(data[:n], params_data[0][:n], name)
+            else: 
+                raise Exception('What should I plot?')
+        elif mode=='predictions':
+            if self.data_name == 'mnist' or self.data_name == 'fashion_mnist':
+                p = PlotGenSamples()
+                p.plot_mnist(data[:36], name)
+            elif self.data_name == 'cifar10':
+                p = PlotGenSamples()
+                p.plot_cifar10(data[:36], name)
+            elif self.data_name == 'spectra':
+                p = PlotGenSamples(nrows=n, ncols=1)
+                p.plot_spectra(data[:n], params_data[0][:n], name)
+            else: 
+                raise Exception('What should I plot?')
+            
 
-
-    def predict(self, checkpoint, noise_size, n_predictions=1):
-        latest_checkpoint = tf.train.latest_checkpoint(checkpoint)
+    def predict(self, n_pred):
+        latest_checkpoint = tf.train.latest_checkpoint(self.checkpoint_dir)
         saver = tf.train.import_meta_graph(latest_checkpoint + '.meta')
-        D_logit = tf.get_default_graph().get_tensor_by_name('D/discriminator_logit:0')
-        D_noise = noise(n_predictions, noise_size)
-        
-        (train_data, train_labels), _ = load_data()
-        train_data = train_data[:n_predictions]
-        train_data = train_data / 255.
-    
+        D_logit = tf.get_default_graph().get_tensor_by_name('D/logit:0')
+        D_noise = noise(n_pred, self.noise_dim)
+            
         gen_data_ph = tf.get_default_graph().get_tensor_by_name('G/gen_data_ph:0')
         data_ph = tf.get_default_graph().get_tensor_by_name('D/data_ph:0')
         dropout_prob_ph = tf.get_default_graph().get_tensor_by_name('dropout_prob_ph:0')
         batch_size_ph = tf.get_default_graph().get_tensor_by_name('batch_size_ph:0')
+        #batch_norm_ph = tf.get_default_graph().get_tensor_by_name('batch_norm_ph:0')
 
-        with tf.Session() as sess:
-            saver.restore(sess, latest_checkpoint)
-            predictions = sess.run(D_logit, feed_dict={data_ph: train_data, gen_data_ph: D_noise,
-                                                       dropout_prob_ph: 0., 
-                                                       batch_size_ph: 1})
-        print(predictions)
-        quit()
-        for i,pred in enumerate(predictions):
-            print('Prediction {}: {}'.format(i, pred))
+        iterator = self.dataset.make_initializable_iterator()
+        next_element = iterator.get_next()
+        self.sess.run(iterator.initializer)
+        saver.restore(self.sess, latest_checkpoint)
 
-    def generate(self, n, name):
+        ps = [] #used for plotting
+        for b in range(self.nbatches):
+            inputs, *params = self.sess.run(next_element)
+            inputs = self._pre_process(inputs, params)
+
+            #Makes sure that the number of predictions is the one the user wants
+            if (b+1)*self.batch_size > n_pred:
+                inputs = inputs[:n_pred - b*self.batch_size]
+
+            predictions = self.sess.run(D_logit, 
+                feed_dict={data_ph: inputs, gen_data_ph: D_noise,
+                           dropout_prob_ph: 0.})
+                           #batch_norm_ph: False})
+            for i,pred in enumerate(predictions, start=1):
+                print('Batch: {} Prediction {}: {}'.format(b+1, i, pred[0]))
+
+            #Store predictions for plotting
+            ps.append(np.array(predictions))    
+
+            #Stopping criterion
+            if len(inputs) != self.batch_size:
+                break
+
+        plot_predictions(ps, '1')
+
+
+    def generate(self, N, n_per_plot, name):
         latest_checkpoint = tf.train.latest_checkpoint(self.checkpoint_dir)
         saver = tf.train.import_meta_graph(latest_checkpoint + '.meta')
         G_output = tf.get_default_graph().get_tensor_by_name('G/output:0')
@@ -323,12 +368,13 @@ class _GAN():
             _, *params = self.sess.run(next_element)
 
         saver.restore(self.sess, latest_checkpoint)
-        gen_samples = self.sess.run(G_output, 
-                                    feed_dict={gen_data_ph: noise(n,self.noise_dim),
-                                               dropout_prob_ph: 0., 
-                                               batch_size_ph: n})
 
-        self._plot(gen_samples, params, name, n=n)
+        for i in range(N):
+            gen_samples = self.sess.run(G_output, 
+                                        feed_dict={gen_data_ph: noise(n_per_plot,self.noise_dim),
+                                                   dropout_prob_ph: 0., 
+                                                   batch_size_ph: n_per_plot})
+            self._plot(gen_samples, params, name+str(i), n=n_per_plot)
 
 ##################################################################################################
 class DCGAN(_GAN):
@@ -359,7 +405,7 @@ class DCGAN(_GAN):
                                   name=name)
             nn = tf.nn.leaky_relu(nn, alpha=self.alpha)
             if self.mode != 'wgan-gp':
-                nn = tf.layers.batch_normalization(nn)
+                nn = tf.layers.batch_normalization(nn, training=self.batch_norm_ph)
             return tf.layers.dropout(nn, rate=drop)
 
         net = tf.reshape(x, shape=[-1, self.in_height, self.in_width, self.nchannels])
@@ -378,12 +424,13 @@ class DCGAN(_GAN):
             self.d_layers_names += ('layer3',)
             net = conv_block(net, conv_channels=self.filters[2], 
                              kernel_size=[5,5], strides=[2,2], name=self.d_layers_names[-1])
+
         elif self.data_name == 'spectra':
             self.d_layers_names += ('layer1',)
             net = conv_block(net, conv_channels=self.filters[0], 
                              kernel_size=[10,1], strides=[5,1], name=self.d_layers_names[-1])
             self.d_layers_names += ('layer2',)
-            net = conv_block(net, conv_channels=self.filters[1], 
+            net = conv_block(net, conv_channels=self.filters[1],
                              kernel_size=[10,1], strides=[5,1], name=self.d_layers_names[-1])
             self.d_layers_names += ('layer3',)
             net = conv_block(net, conv_channels=self.filters[2], 
@@ -401,7 +448,7 @@ class DCGAN(_GAN):
 
         self.d_layers_names += ('dense_output',)
         net = tf.layers.dense(net, 1, activation=None, name=self.d_layers_names[-1])
-        return net, tf.nn.sigmoid(net, name='logit')
+        return net, tf.nn.sigmoid(net, name='logit'), self.mid_layers
     
     def _generator(self, noise, drop):
         if self.data_name in self.image_datasets:
@@ -415,7 +462,7 @@ class DCGAN(_GAN):
                                             activation=None, padding='same', name=name)
             nn = tf.nn.leaky_relu(nn, alpha=self.alpha)
             if self.mode != 'wgan-gp':
-                nn = tf.layers.batch_normalization(nn)
+                nn = tf.layers.batch_normalization(nn, training=self.batch_norm_ph)
             nn = tf.layers.dropout(nn, rate=drop)
             return nn
         
@@ -457,7 +504,7 @@ class DCGAN(_GAN):
                                              activation=None, padding='same', 
                                              name=self.g_layers_names[-1])
             if self.mode != 'wgan-gp':
-                net = tf.layers.batch_normalization(net)
+                net = tf.layers.batch_normalization(net, training=self.batch_norm_ph)
             net = tf.nn.tanh(net)
 
         return tf.reshape(net, shape=[-1, self.in_height, self.in_width, self.nchannels], 
@@ -487,15 +534,12 @@ class ResNetGAN(_GAN):
         super()._load_data()
         #self.filters = [64, 128, 256]
         self.filters = [32, 64, 128]
-        #super()._build_model(self._generator, self._discriminator, 
-        #                     lr=opt_pars[0], beta1=opt_pars[1], beta2=opt_pars[2])
-
 
     def _discriminator(self, x, drop):        
         def conv_block(nn, conv_channels, dim_stride, name1, name2):
             nn = tf.nn.leaky_relu(nn, alpha=self.alpha)
             if self.mode != 'wgan-gp':
-                nn = tf.layers.batch_normalization(nn)
+                nn = tf.layers.batch_normalization(nn, training=self.batch_norm)
             nn = tf.layers.conv2d(nn, filters=conv_channels, kernel_size=[3, 3], 
                                   strides=[dim_stride, dim_stride],
                                   activation=None, padding='same', 
@@ -503,14 +547,14 @@ class ResNetGAN(_GAN):
                                   name=name1)
             nn = tf.nn.leaky_relu(nn, alpha=self.alpha)
             if self.mode != 'wgan-gp':
-                nn = tf.layers.batch_normalization(nn)
+                nn = tf.layers.batch_normalization(nn, training=self.batch_norm)
             nn = tf.layers.conv2d(nn, filters=conv_channels, kernel_size=[3, 3], 
                                   strides=[1,1],
                                   activation=None, padding='same', 
                                   name=name2)
             nn = tf.nn.leaky_relu(nn, alpha=self.alpha)
             if self.mode != 'wgan-gp':
-                nn = tf.layers.batch_normalization(nn)
+                nn = tf.layers.batch_normalization(nn, training=self.batch_norm)
             return nn
 
             
@@ -562,7 +606,7 @@ class ResNetGAN(_GAN):
             net = minibatch_discrimination(net, num_kernels=20, kernel_dim=10)
         net = tf.nn.leaky_relu(net, alpha=self.alpha)
         if self.mode != 'wgan-gp':
-            net = tf.layers.batch_normalization(net)
+            net = tf.layers.batch_normalization(net, training=self.batch_norm)
         self.d_layers_names += ('dense_output',)
         net = tf.layers.dense(net, 1, activation=None, name=self.d_layers_names[-1])
         return net, tf.nn.sigmoid(net, name='logit')
@@ -574,20 +618,20 @@ class ResNetGAN(_GAN):
         def conv_block(nn, conv_channels, dim_stride, name1, name2):
             nn = tf.nn.leaky_relu(nn, alpha=self.alpha)
             if self.mode != 'wgan-gp':
-                nn = tf.layers.batch_normalization(nn)
+                nn = tf.layers.batch_normalization(nn, training=self.batch_norm)
             nn = tf.layers.conv2d_transpose(nn, filters=conv_channels, kernel_size=[3,3], 
                                             strides=[dim_stride,dim_stride],
                                             kernel_initializer=tf.initializers.orthogonal(),
                                             activation=None, padding='same', name=name1)
             nn = tf.nn.leaky_relu(nn, alpha=self.alpha)
             if self.mode != 'wgan-gp':
-                nn = tf.layers.batch_normalization(nn)
+                nn = tf.layers.batch_normalization(nn, training=self.batch_norm)
             nn = tf.layers.conv2d_transpose(nn, filters=conv_channels, kernel_size=[3,3], 
                                             strides=[1,1],
                                             activation=None, padding='same', name=name2)
             nn = tf.nn.leaky_relu(nn, alpha=self.alpha)
             if self.mode != 'wgan-gp':
-                nn = tf.layers.batch_normalization(nn)
+                nn = tf.layers.batch_normalization(nn, training=self.batch_norm)
             return nn
 
             
@@ -637,7 +681,7 @@ class ResNetGAN(_GAN):
 
         net = tf.nn.leaky_relu(net, alpha=self.alpha)
         if self.mode != 'wgan-gp':
-            net = tf.layers.batch_normalization(net)
+            net = tf.layers.batch_normalization(net, training=self.batch_norm)
         net = tf.layers.conv2d_transpose(net, filters=self.nchannels, kernel_size=[7,7], 
                                          strides=[1,1],
                                          activation=None, padding='same', 
