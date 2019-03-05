@@ -1,5 +1,7 @@
 import os
 import abc
+import h5py
+import time
 import numpy as np
 #np.set_printoptions(threshold=np.nan)
 import tensorflow as tf
@@ -57,7 +59,6 @@ class _GAN(abc.ABC):
         self.alpha = 0.2 #leaky relu parameter
         self.image_datasets = {'mnist', 'fashion_mnist', 'cifar10'}
         self.d_layers_names, self.g_layers_names = (() for _ in range(2))
-        self.mid_layers = () #intermediate layers
 
     @abc.abstractmethod
     def _generator(self, noise, drop):
@@ -67,32 +68,63 @@ class _GAN(abc.ABC):
     def _discriminator(self, noise, drop):
         raise NotImplementedError('Please implement the discriminator in your subclass.')
 
-    def _load_data(self):
-        if self.data_name in self.image_datasets:
-            if self.data_name == 'mnist':
+    def _load_data(self, ret=False, data_name=None, data_path=None, data_size=None):
+        """
+        When ret==True the function returns the data and does not store it as a class variable.
+        This is useful when using datasets that were not used to train the model.
+        Use the 'data_name' and 'data_path' argument to specify the name and path 
+        of the dataset when ret==True
+        """
+        if (data_name == None or data_name in self.image_datasets) and data_path != None:
+            raise ValueError('It makes no sense to specify the data_path with this data_name.')
+        if data_path != None and ret==False:
+            raise ValueError('You cannot save a dataset as a class variable [ret==False]'
+                             'when using a custom data_path.')
+        if data_name == None:
+            data_name = self.data_name
+        if data_size == None:
+            data_size = self.dataset_size
+
+        if data_name in self.image_datasets:
+            if data_name == 'mnist':
                 (train_data, train_labels), _ = tf.keras.datasets.mnist.load_data()
-            elif self.data_name == 'fashion_mnist':
+            elif data_name == 'fashion_mnist':
                 (train_data, train_labels), _ = tf.keras.datasets.fashion_mnist.load_data()
-            elif self.data_name == 'cifar10':
+            elif data_name == 'cifar10':
                 (train_data, train_labels), _ = tf.keras.datasets.cifar10.load_data()
 
-            train_data = train_data / 255.
+            train_data = train_data / 255 if data_size==None else train_data[data_size] / 255
             dataset_size = len(train_data)
             dataset = tf.data.Dataset.from_tensor_slices((train_data, train_labels))
-            self.dataset = dataset.shuffle(buffer_size=dataset_size).repeat(1).batch(self.batch_size)
-            self.nbatches = int(np.ceil(dataset_size/self.batch_size))
-        
+            dataset = dataset.shuffle(buffer_size=dataset_size).repeat(1).batch(self.batch_size)
+            nbatches = int(np.ceil(dataset_size/self.batch_size))
+
+            if ret:
+                return dataset, nbatches
+
+            self.dataset = dataset
+            self.nbatches = nbatches
+
         else:
             if self.files_path == None:
                 raise ValueError('The path of the training data files must be specified.')
-            if  self.dataset_size == None:
+            if data_size == None:
                 raise ValueError('The size of the training data must be specified.')
 
-            if self.data_name == 'spectra':
-                dataset = read_data(self.files_path+'spectra.tfrecord', self.in_height)
+            if data_name == 'spectra':
+                if data_path == None:
+                    dataset = read_data(self.files_path+data_name+'.tfrecord', self.in_height)
+                else:
+                    dataset = read_data(data_path+data_name+'.tfrecord', self.in_height)
 
-            self.dataset = dataset.repeat(1).batch(self.batch_size)
-            self.nbatches = int(np.ceil(self.dataset_size/self.batch_size))
+            dataset = dataset.repeat(1).batch(self.batch_size)
+            nbatches = int(np.ceil(data_size/self.batch_size))
+
+            if ret:
+                return dataset, nbatches
+
+            self.dataset = dataset
+            self.nbatches = nbatches
 
     def _pre_process(self, inputs, params):
         if self.data_name == 'mnist' or self.data_name == 'fashion_mnist':
@@ -101,7 +133,7 @@ class _GAN(abc.ABC):
             mean = np.mean(inputs, axis=1, keepdims=True)
             diff = inputs - mean
             std = np.sqrt(np.mean(diff**2, axis=1, keepdims=True))
-            inputs = diff / std / 10
+            inputs = diff / std / 30
             return np.expand_dims(np.expand_dims(inputs, axis=2), axis=3)
         return inputs
 
@@ -121,12 +153,12 @@ class _GAN(abc.ABC):
             self.data_ph = tf.placeholder(tf.float32, 
                                           shape=[None, self.in_height, self.in_width, self.nchannels], 
                                           name='data_ph')   
-            self.D_real_logits, self.D_real, self.mid_real = discriminator(self.data_ph, 
-                                                                           drop=self.dropout_prob_ph)
+            self.D_real_logits, self.D_real = discriminator(self.data_ph, 
+                                                            drop=self.dropout_prob_ph)
 
         with tf.variable_scope('D', reuse=True):
-            self.D_fake_logits, self.D_fake, self.mid_fake = discriminator(self.G_sample, 
-                                                                           drop=self.dropout_prob_ph)
+            self.D_fake_logits, self.D_fake = discriminator(self.G_sample, 
+                                                            drop=self.dropout_prob_ph)
 
         #Gradient Penalty
         if self.mode=='wgan-gp':
@@ -162,7 +194,7 @@ class _GAN(abc.ABC):
             tf.summary.scalar('loss_g', self.G_loss)    
             log_tf_files(layers_names=self.g_layers_names, loss=self.G_loss, scope='G')
 
-        #how many pictures to stack in each side
+        #how many pictures to stack on each side
         if self.data_name in self.image_datasets:
             self.side = 9 
         else:
@@ -190,13 +222,14 @@ class _GAN(abc.ABC):
             self.G_train_op = G_optimizer.minimize(self.G_loss, var_list=G_trainable_vars, 
                                                    name='G_train_op')
 
-    def train(self, nepochs, drop_d=0.7, drop_g=0.3):
+    def train(self, nepochs, drop_d=0.7, drop_g=0.3, flip_prob=0.05):
         """
         Arguments:
 
         nepochs: number of training epochs (one epoch corresponds to looking at every data item once)
         drop_d: dropout in the discriminator
         drop_g: dropout in the generator
+        flip_prob: label flipping probability for the discriminator
         """
         self._build_model(self._generator, self._discriminator, 
                           lr=self.opt_pars[0], beta1=self.opt_pars[1], beta2=self.opt_pars[2])
@@ -207,7 +240,6 @@ class _GAN(abc.ABC):
         iterator = self.dataset.make_initializable_iterator()
         next_element = iterator.get_next()
 
-        flip_prob = 0.05 #label flipping for the discriminator
         minval, maxval= 0.85, 1.1 #smoothing
 
         dropout_prob_D = drop_d
@@ -248,16 +280,26 @@ class _GAN(abc.ABC):
 
                 noise_G = noise(len(inputs), self.noise_dim)
 
-                #no flipping or smoothing for the generator
+                #flipping and smoothing for the generator
+                real = np.random.uniform(low=minval, high=maxval, size=(len(inputs),1))
+                fake = np.zeros(shape=(len(inputs),1))
+                _idxs = np.random.choice(np.arange(len(inputs)), 
+                                         size=(int(flip_prob*len(inputs))), replace=False)
+                real[_idxs] = 0.
+                fake[_idxs] = np.random.uniform(low=minval, high=maxval, 
+                                                size=(int(flip_prob*len(inputs)),1))
+                """
+                #no smoothing or flipping
                 real = np.ones(shape=(len(inputs),1))
                 fake = np.zeros(shape=(len(inputs),1))
-
+                """
                 #train generator
                 _, G_loss_c  = self.sess.run([self.G_train_op, self.G_loss],
                                       feed_dict={self.data_ph: inputs, self.gen_data_ph: noise_G,
                                                  self.dropout_prob_ph: dropout_prob_G,
                                                  self.batch_size_ph: len(inputs),
                                                  self.real_labels_ph: real, self.fake_labels_ph: fake})
+
             saver.save(self.sess, self.checkpoint_dir, global_step=1000)
 
             sample = self.sess.run(self.G_sample, feed_dict={self.gen_data_ph: noise_G,
@@ -319,7 +361,7 @@ class _GAN(abc.ABC):
         data_ph = tf.get_default_graph().get_tensor_by_name('D/data_ph:0')
         dropout_prob_ph = tf.get_default_graph().get_tensor_by_name('dropout_prob_ph:0')
         batch_size_ph = tf.get_default_graph().get_tensor_by_name('batch_size_ph:0')
-        #batch_norm_ph = tf.get_default_graph().get_tensor_by_name('batch_norm_ph:0')
+        batch_norm_ph = tf.get_default_graph().get_tensor_by_name('batch_norm_ph:0')
 
         iterator = self.dataset.make_initializable_iterator()
         next_element = iterator.get_next()
@@ -337,8 +379,8 @@ class _GAN(abc.ABC):
 
             predictions = self.sess.run(D_logit, 
                 feed_dict={data_ph: inputs, gen_data_ph: D_noise,
-                           dropout_prob_ph: 0.})
-                           #batch_norm_ph: False})
+                           dropout_prob_ph: 0.,
+                           batch_norm_ph: False})
             for i,pred in enumerate(predictions, start=1):
                 print('Batch: {} Prediction {}: {}'.format(b+1, i, pred[0]))
 
@@ -351,12 +393,10 @@ class _GAN(abc.ABC):
 
         plot_predictions(ps, '1')
 
-
     def generate(self, N, n_per_plot, name):
         latest_checkpoint = tf.train.latest_checkpoint(self.checkpoint_dir)
         saver = tf.train.import_meta_graph(latest_checkpoint + '.meta')
         G_output = tf.get_default_graph().get_tensor_by_name('G/output:0')
-
         gen_data_ph = tf.get_default_graph().get_tensor_by_name('G/gen_data_ph:0')
         dropout_prob_ph = tf.get_default_graph().get_tensor_by_name('dropout_prob_ph:0')
         batch_size_ph = tf.get_default_graph().get_tensor_by_name('batch_size_ph:0')
@@ -376,6 +416,121 @@ class _GAN(abc.ABC):
                                                    batch_size_ph: n_per_plot})
             self._plot(gen_samples, params, name+str(i), n=n_per_plot)
 
+    def save_features(self, ninputs, save_path, 
+                      additional_data_name=None, additional_data_path=None, additional_ninputs=None):
+        """
+        Saves features obtained by running the data through a saved discriminator model.
+        The layer from where the data is retrieved is not the last one.
+        By selecting a layer before the last, one hopes to extract some features the net has learned.
+        The featues are save into a hdf5 file for further analysis.
+        Notes: 1. 'BiasAdd' is the tensorflow operation that adds a bias to the input data.
+               2. 'MatMul' is instead used if one wants to consider the weights only.
+
+        ---Arguments---
+        ->ninputs: 
+           number of inputs whose features will be saved. The inputs used will be different
+           for different runs, since the datasets are always shuffled.
+        ->save_path: 
+           where to save the hdf5 file. The extension should not be included.
+        ->additional_data_name: 
+           name of a dataset. This allows the user to save the features for more than one dataset.
+           In order to see the discriminator response, it is useful to be able to run data on a model
+           that was trained using different data.
+        ->additional_data_path: 
+           path to the folder where the additional dataset is stored. The dataset should be stored 
+           in that folder in one or more Tfrecord shards with the following names:  
+           additional_data_name0.tfrecord, additional_data_name1.tfrecord, ...
+        ->additional_ninputs: 
+           number of samples to consider for the TFRecords additional dataset. Defaults to the number 
+           defined in the original dataset. The user has to make sure that the data size is correct 
+           for the dataset specified in the 'additional_data_path', otherwise the number of batches
+           will be wrong; if it is too large, the code will throw an out of bounds error; if it is
+           too small, part of the dataset will not be considered when obtaining the features.
+        """ 
+        latest_checkpoint = tf.train.latest_checkpoint(self.checkpoint_dir)
+        saver = tf.train.import_meta_graph(latest_checkpoint + '.meta')
+        D_feats = tf.get_default_graph().get_tensor_by_name('D/layer4/BiasAdd:0')
+        D_feats = tf.reshape(D_feats, shape=[-1,7*1*1024])
+        D_noise = noise(ninputs, self.noise_dim)
+            
+        data_ph = tf.get_default_graph().get_tensor_by_name('D/data_ph:0')
+        dropout_prob_ph = tf.get_default_graph().get_tensor_by_name('dropout_prob_ph:0')
+        batch_size_ph = tf.get_default_graph().get_tensor_by_name('batch_size_ph:0')
+        batch_norm_ph = tf.get_default_graph().get_tensor_by_name('batch_norm_ph:0')
+
+        iterator = self.dataset.make_initializable_iterator()
+        next_element = iterator.get_next()
+        self.sess.run(iterator.initializer)
+
+        if additional_ninputs == None:
+            additional_ninputs = self.dataset_size
+        if additional_data_name != None:
+            dataset2, nbatches2 = self._load_data(ret=True, 
+                                                  data_name=additional_data_name,
+                                                  data_path=additional_data_path,
+                                                  data_size=additional_ninputs)
+            iterator2 = dataset2.make_initializable_iterator()
+            next_element2 = iterator2.get_next()
+            self.sess.run(iterator2.initializer)
+
+        saver.restore(self.sess, latest_checkpoint)
+
+        save_start = 0
+        M = D_feats.get_shape()[1]
+
+        with h5py.File(save_path+'.hdf5', 'w') as f:
+            group = f.create_group('data')
+            dset = group.create_dataset(self.data_name, (ninputs, M), dtype=np.float32) 
+            for b in range(self.nbatches):
+                inputs, *params = self.sess.run(next_element)
+
+                #This avoids the mess that the last batch (smaller) causes
+                #The size of the hdf5 files is fixed.
+                if len(inputs) != self.batch_size:
+                    break
+
+                inputs = self._pre_process(inputs, params)
+
+                #Makes sure that the number of input data is the one the user wants
+                if (b+1)*self.batch_size > ninputs:
+                    inputs = inputs[:ninputs - b*self.batch_size]
+
+                feats = self.sess.run(D_feats,
+                                      feed_dict={data_ph: inputs, #gen_data_ph: D_noise,
+                                                 dropout_prob_ph: 0.,
+                                                 batch_norm_ph: False})
+                dset[save_start:save_start+len(feats), :] = feats
+                save_start += len(feats)
+
+                #Stopping criterion
+                if len(inputs) != self.batch_size:
+                    break
+
+            save_start = 0
+            count=0
+            if additional_data_name != None:
+                dset = group.create_dataset(additional_data_name+'_additional', 
+                                            (additional_ninputs, M), dtype=np.float32) 
+                for b in range(nbatches2):
+                    inputs, *params = self.sess.run(next_element2)
+                    inputs = self._pre_process(inputs, params)
+
+                    #Makes sure that the number of input data is the one the user wants
+                    if (b+1)*self.batch_size > additional_ninputs:
+                        inputs = inputs[:additional_ninputs - b*self.batch_size]
+
+                    count += len(inputs)
+                    feats = self.sess.run(D_feats,
+                                          feed_dict={data_ph: inputs, #gen_data_ph: D_noise,
+                                                     dropout_prob_ph: 0.,
+                                                     batch_norm_ph: False})
+                    dset[save_start:save_start+len(feats), :] = feats
+                    save_start += len(feats)
+
+                    #Stopping criterion
+                    if len(inputs) != self.batch_size:
+                        break
+                print("Number of inputs: ", count)
 ##################################################################################################
 class DCGAN(_GAN):
     """
@@ -445,10 +600,11 @@ class DCGAN(_GAN):
         if self.mode != 'wgan-gp':
             net = minibatch_discrimination(net, num_kernels=30, kernel_dim=20, 
                                            name='minibatch_discrimination')
-
+        #self.d_layers_names += ('final_dense',)
+        #net = tf.layers.dense(net, 1024, activation=None, name=self.d_layers_names[-1])
         self.d_layers_names += ('dense_output',)
         net = tf.layers.dense(net, 1, activation=None, name=self.d_layers_names[-1])
-        return net, tf.nn.sigmoid(net, name='logit'), self.mid_layers
+        return net, tf.nn.sigmoid(net, name='logit')
     
     def _generator(self, noise, drop):
         if self.data_name in self.image_datasets:
@@ -521,7 +677,7 @@ class ResNetGAN(_GAN):
     The generator is similar to the original ResNet discriminator, but using transposed convolutions
     instead; it represents an original contribution.
     """
-    def __init__(self, sess, checkpoint_dir, tensorboard_dir, in_height=28, in_width=28, nchannels=1,
+    def __init__(self, sesss, checkpoint_dir, tensorboard_dir, in_height=28, in_width=28, nchannels=1,
                  batch_size=128, noise_dim=100, dataset_size=None,
                  data_name='mnist', mode='original', opt_pars=(0.00005, 0.9, 0.999),
                  pics_save_names=(None,None), d_iters=1, files_path=None):

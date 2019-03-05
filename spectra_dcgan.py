@@ -16,22 +16,35 @@ def main(argv=None):
                       nchannels=1,
                       batch_size=512,
                       noise_dim=100,
-                      mode='original',
-                      opt_pars=(0.00002, 0.9, 0.999),
-                      d_iters=1,
+                      mode='wgan-gp',
+                      opt_pars=(0.00005, 0.0, 0.9),
+                      d_iters=5,
                       data_name='spectra',
                       dataset_size=345960,
-                      pics_save_names=('spectra_data_v6_', 'spectra_gen_v6_'),
+                      #dataset_size=701205,
+                      pics_save_names=('spectra_data_wgangp_','spectra_gen_wgangp_'),
+                      #pics_save_names=('spectra_data_wgangp_legacy_','spectra_gen_wgangp_legacy_'),
                       files_path='/fred/oz012/Bruno/data/spectra/boss/loz/',
+                      #files_path='/fred/oz012/Bruno/data/spectra/legacy/legacy_bit6/',
                       checkpoint_dir=checkpoint_dir,
                       tensorboard_dir=tensorboard_dir)
 
         if FLAGS.mode == 'train':
-            dcgan.train(nepochs, drop_d=0.0, drop_g=0.0)
+            dcgan.train(nepochs, drop_d=0.0, drop_g=0.0, flip_prob=0.15)
+
         elif FLAGS.mode == 'generate':
             dcgan.generate(N=3, n_per_plot=5, name='generate')
+
         elif FLAGS.mode == 'predict':
             dcgan.predict(n_pred=514)
+        
+        elif FLAGS.mode == 'save_features':
+            dcgan.save_features(ninputs=100000, 
+                                save_path='/fred/oz012/Bruno/data/confirm', 
+                                additional_data_name='spectra',
+                                #additional_data_path='/fred/oz012/Bruno/data/spectra/boss/cmass/',
+                                additional_data_path='/fred/oz012/Bruno/data/spectra/legacy/outliers/',
+                                additional_ninputs=100000)
 
 
 if __name__ == '__main__':
