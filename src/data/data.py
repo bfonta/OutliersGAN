@@ -17,15 +17,11 @@ def _float_feature(Value):
 
 def _is_invalid(arr, l):
     def _check_only_zeros(arr):
-        """
-        Returns True if all the elements of arr are zero
-        """
+        """Returns True if all the elements of arr are zero"""
         return not np.any(arr)
 
     def _check_infinite(arr):
-        """
-        Returns True if there is at least one element in arr is either infinite or nan
-        """
+        """Returns True if there is at least one element in arr is either infinite or nan"""
         return not np.all(np.isfinite(arr))
         
     def _check_wrong_length(arr, l):
@@ -66,11 +62,7 @@ def real_spectra_to_tfrecord(filename, table_path, nshards=1):
                     rshift_ = df['redshift'].iloc[i_spectrum].astype(np.float32)
                     lam_ = lam_ / (1 + rshift_)
 
-                    #reasonable selection
-                    #obtained after checking the minima and maxima of all spectra
-                    #and looking at individual spectra
-                    #such that the most important features are present
-                    #in a range of 3500 data points
+                    #selection
                     selection = (lam_>bound_select)
                     lam_= lam_[selection][:tot_length]
                     flux_= flux_[selection][:tot_length]
@@ -79,6 +71,7 @@ def real_spectra_to_tfrecord(filename, table_path, nshards=1):
                         err_counter += 1
                         continue
                     elif lam_[0]>bound_select+2:
+                        """Make sure the spectra start at roughly the same wavelength"""
                         err_counter += 1
                         continue
 
