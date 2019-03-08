@@ -7,6 +7,7 @@ import glob
 import numpy as np
 import tensorflow as tf
 from astropy.io import fits
+from scipy import interpolate
 
 def write_to_file(fname, *args):
     with open(fname, 'a') as f:
@@ -46,56 +47,16 @@ def spectra_fits_data(filename_pattern, batch_size):
                 del loglam[:]
                 del flux[:]
 
-class PlotGenSamples():
-    def __init__(self, ncols=6, nrows=6, figsize=(16,12)):
-        self.nrows = nrows
-        self.ncols = ncols
-        self.figsize = figsize
-
-    def plot_spectra(self, samples, lambdas, name=''):
-        self.fig, self.ax = plt.subplots(nrows=self.nrows, ncols=self.ncols, 
-                                         squeeze=False, sharex=True, 
-                                         figsize=self.figsize)
-        self.fig.subplots_adjust(hspace=0.07)
-        i = 0
-        for irow in range(self.nrows):
-            for icol in range(self.ncols):
-                self.ax[irow, icol].grid()
-                self.ax[irow, icol].set_ylabel('Flux')
-                self.ax[irow, icol].plot(lambdas[i].reshape(3500), samples[i].reshape(3500))
-                i = i + 1
-        plt.xlabel('Wavelength [A]')
-        plt.savefig('/fred/oz012/Bruno/figs/{}.png'.format(name))
-        plt.close()
-
-    def plot_mnist(self, samples, name):
-        self.fig = plt.figure(figsize=(6,6))
-        self.gs = gridspec.GridSpec(self.nrows,self.ncols)
-        self.gs.update(wspace=0.05, hspace=0.05)
-        for i, sample in enumerate(samples):
-            ax = plt.subplot(self.gs[i])
-            plt.axis('off')
-            ax.set_xticklabels([])
-            ax.set_yticklabels([])
-            ax.set_aspect('equal')
-            plt.imshow(sample.reshape(28,28), cmap='Greys_r')
-        plt.savefig('/fred/oz012/Bruno/figs/{}.png'.format(name))
-        plt.close()
-
-    def plot_cifar10(self, samples, name):
-        self.fig = plt.figure(figsize=(6,6))   
-        self.gs = gridspec.GridSpec(self.nrows,self.ncols)
-        self.gs.update(wspace=0.05, hspace=0.05)
-        for i, sample in enumerate(samples):
-            ax = plt.subplot(self.gs[i])
-            plt.axis('off')
-            ax.set_xticklabels([])
-            ax.set_yticklabels([])
-            ax.set_aspect('equal')
-            plt.imshow(sample.reshape(32,32,3))
-        plt.savefig('/fred/oz012/Bruno/figs/{}.png'.format(name))
-        plt.close()
-
+def plot_predictions(pred, name):
+    """
+    Only works if 'pred' is a list of lists. 
+    Each nested list must contain the predictions for a dataset
+    """
+    for i in range(len(pred)):
+        plt.scatter(np.arange(len(pred[i])), pred[i], label=str(i))
+    plt.legend()
+    plt.savefig('/fred/oz012/Bruno/figs/{}.png'.format(name))
+    plt.close()
 
 def log_tf_files(layers_names, loss, scope):
     gr = tf.get_default_graph()
@@ -133,3 +94,63 @@ def tboard_concat(samples, side):
         _sample = samples[_n:_n+side]
         tboard_sample = np.concatenate((tboard_sample, np.concatenate(_sample, axis=1)), axis=0)
     return tboard_sample
+
+def resampling_1d(x, y, bounds=(3750,7000), size=3500):
+    """Perform 1d interpolation
+    Arguments:
+    -> x, y: x and y data dimensions. They should include one axis only."""
+    f = interpolate.interp1d(x=x, y=y, kind='linear', assume_sorted=True)
+    xnew = np.logspace(np.log10(bounds[0]), np.log10(bounds[1]), size)
+    ynew = f(xnew)
+    return xnew, ynew
+
+class PlotGenSamples():
+    def __init__(self, ncols=6, nrows=6, figsize=(16,12)):
+        self.nrows = nrows
+        self.ncols = ncols
+        self.figsize = figsize
+
+    def plot_spectra(self, samples, lambdas, name=''):
+        self.fig, self.ax = plt.subplots(nrows=self.nrows, ncols=self.ncols, 
+                                         squeeze=False, sharex=True, 
+                                         figsize=self.figsize)
+        self.fig.subplots_adjust(hspace=0.07)
+        i = 0
+        for irow in range(self.nrows):
+            for icol in range(self.ncols):
+                self.ax[irow, icol].grid()
+                self.ax[irow, icol].set_ylabel('Flux')
+                self.ax[irow, icol].plot(lambdas[i].reshape(3500), samples[i].reshape(3500))
+                #self.ax[irow, icol].plot(lambdas[i], samples[i])
+                i = i + 1
+        plt.xlabel('Wavelength [A]')
+        plt.savefig('/fred/oz012/Bruno/figs/{}.png'.format(name))
+        plt.close()
+
+    def plot_mnist(self, samples, name):
+        self.fig = plt.figure(figsize=(6,6))
+        self.gs = gridspec.GridSpec(self.nrows,self.ncols)
+        self.gs.update(wspace=0.05, hspace=0.05)
+        for i, sample in enumerate(samples):
+            ax = plt.subplot(self.gs[i])
+            plt.axis('off')
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+            ax.set_aspect('equal')
+            plt.imshow(sample.reshape(28,28), cmap='Greys_r')
+        plt.savefig('/fred/oz012/Bruno/figs/{}.png'.format(name))
+        plt.close()
+
+    def plot_cifar10(self, samples, name):
+        self.fig = plt.figure(figsize=(6,6))   
+        self.gs = gridspec.GridSpec(self.nrows,self.ncols)
+        self.gs.update(wspace=0.05, hspace=0.05)
+        for i, sample in enumerate(samples):
+            ax = plt.subplot(self.gs[i])
+            plt.axis('off')
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+            ax.set_aspect('equal')
+            plt.imshow(sample.reshape(32,32,3))
+        plt.savefig('/fred/oz012/Bruno/figs/{}.png'.format(name))
+        plt.close()
