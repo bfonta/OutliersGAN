@@ -7,26 +7,13 @@ import matplotlib.pyplot as plt
 from ..data.spectra_generation import gen_spectrum_2lines
 
 def _bytes_feature(Value):
-    return tf.train.Feature(bytes_list=tf.train.BytesList(value=Value))
+    return tf.train.Feature(bytes_list=tf.train.BytesList(value=[Value]))
 
 def _int_feature(Value):
     return tf.train.Feature(int64_list=tf.train.Int64List(value=[Value]))
 
 def _float_feature(Value):
     return tf.train.Feature(float_list=tf.train.FloatList(value=Value))
-
-def _remove_nans(arr):
-    nan_idxs = np.where(np.isnan(arr))[0]
-    arr[nan_idxs]=0
-
-def _remove_negs(arr):
-    nan_idxs = np.where(arr<0)[0]
-    arr[nan_idxs]=0
-
-def _remove_small(arr):
-    nan_idxs = np.where(np.logical_and(arr>0,arr<1e-8))[0]
-    Arr[nan_idxs]=0
-
 
 def _is_invalid(arr, l):
     def _check_only_zeros(arr):
@@ -50,22 +37,23 @@ def _is_invalid(arr, l):
     return _check_only_zeros(arr) or _check_infinite(arr) or _check_wrong_length(arr, l)
 
 
-def real_spectra_to_tfrecord(filename, table_path, shards_number=1):
+def real_spectra_to_tfrecord(filename, table_path, nshards=1):
     """
     Saves spectra in the TFRecord format. 
     The last shard is equal or smaller than all others.
         Arguments:
-        -> data_folder (string): folder where the spectra ('.fits' files) are stored
+        -> table_path (string): csv file
         -> filename (string): name of the file where the data is going to be stored
-        -> shards_number (int): number of shards for splitting the data
+        -> nshards (int): number of shards for splitting the data
         """
     import pandas as pd
     df = pd.read_csv(table_path)
     nspectra = len(df.axes[0])
-
-    shard_width = int(nspectra/shards_number)+1
+    bound_select = 3750
+    tot_length = 3500
+    shard_width = int(nspectra/nshards)+1
     err_counter = 0
-    for i_shard in range(shards_number):
+    for i_shard in range(nshards):
         with tf.python_io.TFRecordWriter(filename+str(i_shard)+'.tfrecord') as _w:
             for i_spectrum in range(i_shard*shard_width,(i_shard+1)*shard_width): 
                 if i_spectrum%2000==0:
@@ -83,11 +71,14 @@ def real_spectra_to_tfrecord(filename, table_path, shards_number=1):
                     #and looking at individual spectra
                     #such that the most important features are present
                     #in a range of 3500 data points
-                    selection = (lam_>3400) & (lam_<6900)
-                    lam_= lam_[selection]
-                    flux_= flux_[selection]
+                    selection = (lam_>bound_select)
+                    lam_= lam_[selection][:tot_length]
+                    flux_= flux_[selection][:tot_length]
 
-                    if _is_invalid(flux_, 3500):
+                    if _is_invalid(flux_, tot_length):
+                        err_counter += 1
+                        continue
+                    elif lam_[0]>bound_select+2:
                         err_counter += 1
                         continue
 
@@ -119,12 +110,14 @@ def gen_spectra_to_tfrecord(nspectra, spectra_size, filename, nshards=1, norm=Fa
         with tf.python_io.TFRecordWriter(filename+str(i_shard)+'.tfrecord') as _w:
             if i_shard == nshards-1: #last shard
                 nspectra_per_shard = nspectra - i_shard*nspectra_per_shard
-            _, data, labels = gen_spectrum_2lines(nspectra_per_shard, spectra_size, norm=norm)
+            wavelength, data, labels = gen_spectrum_2lines(nspectra_per_shard, spectra_size, norm=norm)
             print('Shard {} with {} spectra'.format(i_shard, nspectra_per_shard))
             for j in range(nspectra_per_shard):
+                #wavelength and redhsift are provided only for compatibility with real spectra
                 Example = tf.train.Example(features=tf.train.Features(feature={
                     'spectrum': _float_feature(data[j].tolist()),
-                    'label': _int_feature(labels[j])
+                    'wavelength': _float_feature(wavelength[j].tolist()),
+                    'redshift': _float_feature([0.])
             }))
                 _w.write(Example.SerializeToString())
 
@@ -163,6 +156,78 @@ def read_spectra_data(filename, spectrum_length, data_folder=''):
 
     dataset = tf.data.Dataset.list_files(files).shuffle(nshards) #dataset of filenames
     dataset = dataset.interleave(lambda x: tf.data.TFRecordDataset(x), cycle_length=nshards)
-    dataset = dataset.map(map_func=parser_func, 
-                       num_parallel_calls=32) #number of available CPUs per node in OzStar
-    return dataset.shuffle(buffer_size=100000, reshuffle_each_iteration=True)
+    dataset = dataset.map(map_func=parser_func, num_parallel_calls=32) #number of available CPUs per node in OzStar
+    return dataset.shuffle(buffer_size=7000, reshuffle_each_iteration=True)
+
+
+def pictures_to_tfrecord(filename, data_folder, nshards=1):
+    """
+    Saves spectra in the TFRecord format. 
+    The last shard is equal or smaller than all others.
+        Arguments:
+        -> filename (string): name of the file where the data is going to be stored
+        -> data_folder (string): folder where the pictures ('.jpg' files) are stored
+        -> nshards (int): number of shards for splitting the data
+        """    
+    from PIL import Image
+
+    fnames = glob.glob(os.path.join(data_folder, '*.jpg'))
+    npics = len(fnames)
+    shard_width = int(npics/nshards)+1
+
+    for i_shard in range(nshards):
+        with tf.python_io.TFRecordWriter(filename+str(i_shard)+'.tfrecord') as _w:
+            for ipic in range(i_shard*shard_width,(i_shard+1)*shard_width): 
+                if ipic%2000==0:
+                    print('{} iteration'.format(ipic), flush=True)
+                if ipic>=npics:
+                    break
+                with Image.open(fnames[ipic]) as im:
+                    im = im.resize((109,89), Image.ANTIALIAS)
+                    im = np.array(im).astype(np.float32)
+                    im = np.transpose(im, (2,0,1))
+                    Example = tf.train.Example(features=tf.train.Features(feature={
+                        #'pic': _float_feature(im.flatten().tolist()),
+                        'pic': _bytes_feature(im.tostring()),
+                    }))
+                    _w.write(Example.SerializeToString())
+            quit()
+
+
+def read_pictures_data(filename, pic_size=(), data_folder=''):
+    """
+    Converts TFRecord files into a shuffled TensorFlow Dataset. 
+    Arguments: 
+    -> filename(string): The main name of the files to load (excluding the shard number).
+    -> pic_size (int): The length of the spectra stored in the tfrecord files.
+    -> data_folder (string): The folder where the tfrecord files are stored.
+    Returns: A mapped tf.data.Dataset (pictures, labels)
+    """
+    if type(filename) != str or type(data_folder) != str:
+        raise TypeError('The name of the file and the name of the folder must be strings.')
+    filename, ext = filename.split('.')
+    if ext!='tfrecord':
+        raise ValueError('Only TFRecord files can be read.')
+    files = []
+    i_file = 0
+    while True:
+        f = filename+str(i_file)+'.'+ext
+        if os.path.isfile(os.path.join(data_folder,f)):
+            files.append(os.path.join(data_folder,f))
+        else:
+            break
+        i_file += 1
+    nshards = i_file+1
+
+    def parser_func(tfrecord):
+        #feats = {'pic': tf.FixedLenFeature((pic_size[0]*pic_size[1]*pic_size[2]), tf.float32)}
+        feats = {'pic': tf.FixedLenFeature((), tf.string)}
+        pfeats = tf.parse_single_example(tfrecord, feats)
+        pic =  tf.decode_raw(pfeats['pic'], tf.float32)
+        return tf.reshape(pic, (pic_size[0],pic_size[1],pic_size[2]))
+
+    dataset = tf.data.Dataset.list_files(files).shuffle(nshards) #dataset of filenames
+    dataset = dataset.interleave(lambda x: tf.data.TFRecordDataset(x), cycle_length=nshards)
+    dataset = dataset.map(map_func=parser_func, num_parallel_calls=32) #number of available CPUs per node in OzStar
+    
+    return dataset.shuffle(buffer_size=7000, reshuffle_each_iteration=True)

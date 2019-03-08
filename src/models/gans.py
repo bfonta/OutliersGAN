@@ -117,13 +117,12 @@ class _GAN(abc.ABC):
                 else:
                     dataset = read_data(data_path+data_name+'.tfrecord', self.in_height)
 
-            dataset = dataset.repeat(1).batch(self.batch_size)
             nbatches = int(np.ceil(data_size/self.batch_size))
 
             if ret:
-                return dataset, nbatches
+                return dataset.batch(self.batch_size), nbatches
 
-            self.dataset = dataset
+            self.dataset = dataset.repeat(1).batch(self.batch_size)
             self.nbatches = nbatches
 
     def _pre_process(self, inputs, params):
@@ -477,18 +476,14 @@ class _GAN(abc.ABC):
 
         save_start = 0
         M = D_feats.get_shape()[1]
-
+        
         with h5py.File(save_path+'.hdf5', 'w') as f:
+            
             group = f.create_group('data')
             dset = group.create_dataset(self.data_name, (ninputs, M), dtype=np.float32) 
+
             for b in range(self.nbatches):
                 inputs, *params = self.sess.run(next_element)
-
-                #This avoids the mess that the last batch (smaller) causes
-                #The size of the hdf5 files is fixed.
-                if len(inputs) != self.batch_size:
-                    break
-
                 inputs = self._pre_process(inputs, params)
 
                 #Makes sure that the number of input data is the one the user wants
@@ -512,25 +507,28 @@ class _GAN(abc.ABC):
                 dset = group.create_dataset(additional_data_name+'_additional', 
                                             (additional_ninputs, M), dtype=np.float32) 
                 for b in range(nbatches2):
-                    inputs, *params = self.sess.run(next_element2)
-                    inputs = self._pre_process(inputs, params)
+                    try:
+                        inputs, *params = self.sess.run(next_element2)
+                        inputs = self._pre_process(inputs, params)
+                    
+                        #Makes sure that the number of input data is the one the user wants
+                        if (b+1)*self.batch_size > additional_ninputs:
+                            inputs = inputs[:additional_ninputs - b*self.batch_size]
 
-                    #Makes sure that the number of input data is the one the user wants
-                    if (b+1)*self.batch_size > additional_ninputs:
-                        inputs = inputs[:additional_ninputs - b*self.batch_size]
+                        count += len(inputs)
+                        feats = self.sess.run(D_feats,
+                                              feed_dict={data_ph: inputs, #gen_data_ph: D_noise,
+                                                         dropout_prob_ph: 0.,
+                                                         batch_norm_ph: False})
+                        dset[save_start:save_start+len(feats), :] = feats
+                        save_start += len(feats)
 
-                    count += len(inputs)
-                    feats = self.sess.run(D_feats,
-                                          feed_dict={data_ph: inputs, #gen_data_ph: D_noise,
-                                                     dropout_prob_ph: 0.,
-                                                     batch_norm_ph: False})
-                    dset[save_start:save_start+len(feats), :] = feats
-                    save_start += len(feats)
-
-                    #Stopping criterion
-                    if len(inputs) != self.batch_size:
-                        break
+                    except tf.errors.OutOfRangeError:
+                        raise IndexError('Make sure the size of the additional data set is'
+                                         'equal or smaller than the actual number of samples.')
+                        
                 print("Number of inputs: ", count)
+
 ##################################################################################################
 class DCGAN(_GAN):
     """
