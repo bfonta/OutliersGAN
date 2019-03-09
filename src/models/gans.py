@@ -12,28 +12,37 @@ from src.data.data import read_spectra_data as read_data
 
 class _GAN(abc.ABC):
     """
-    Base class for all the implemented GAN-like models.
+    Base class for implementing GAN-like models.
     """
-    def __init__(self, sess, checkpoint_dir, tensorboard_dir, in_width=28, in_height=28, nchannels=1,
-                 batch_size=128, noise_dim=100, dataset_size=None, data_name='mnist', mode='original', 
-                 opt_pars=(0.0001,0.5,0.999), pics_save_names=(None,None), d_iters=1, files_path=None):
+    def __init__(self, sess, mode='original', checkpoint_dir, tensorboard_dir, 
+                 in_width=28, in_height=28, nchannels=1,
+                 batch_size=128, noise_dim=100, opt_pars=(0.0001,0.5,0.999), d_iters=1, 
+                 dataset_size=None, data_name='mnist', files_name=None, files_path=None,
+                 pics_save_names=(None,None))
         """
         Arguments:
-        sess: the tensorflow tf.Session() where the model will run
-        in_height: first data dimension (height in the case of pictures)
-        in_width: second data dimension (width in the case of pictures)
-        n_channels: third data dimension (number of colour channels in the case of pictures)
-        batch_size: size of each data batch. It affects minibatch discrimination and batch normalization
-        noise_dim: dimension of the generator's input noise
-        dataset_size: number of items in the dataset
-        checkpoint_dir: folder which will store model data. Needed for using the model after training.
-        tensorboard_dir: folder which will store Tensorboard data (Tensorflow visualization tool)
-        data_name: name of the dataset to be used. Options: mnist, fashion_mnist, cifar10, spectra
-        mode: whether to train a modified gan version or not. Options: original, wgan-gp
-        opt_pars: Tuple representing adam optimizer parameters: (learning_rate, beta1, beta2) 
-        pics_save_names: Tuple containing the names of the data and generated pictures to be saved
-        d_iters: number of discriminator/critic iterations per generator iteration
-        files_path: where to read the 'spectra' data from. Ignored when using other 'data_name' options 
+
+        -> sess: the tensorflow tf.Session() where the model will run
+        -> in_height: first data dimension (height in the case of pictures)
+        -> in_width: second data dimension (width in the case of pictures)
+        -> n_channels: third data dimension (number of colour channels in the case of pictures)
+        -> batch_size: size of each data batch. It affects minibatch discrimination and 
+           batch normalization
+        -> noise_dim: dimension of the generator's input noise
+        -> dataset_size: number of items in the dataset
+        -> checkpoint_dir: folder which will store model data. Needed for using the model after training.
+        -> tensorboard_dir: folder which will store Tensorboard data (Tensorflow visualization tool)
+        -> data_name: name of the dataset to be used. Options: mnist, fashion_mnist, cifar10, spectra
+        -> mode: whether to train a modified gan version or not. Options: original, wgan-gp
+        -> opt_pars: Tuple representing adam optimizer parameters: (learning_rate, beta1, beta2) 
+        -> pics_save_names: Tuple containing the names of the data and generated pictures to be saved
+        -> d_iters: number of discriminator/critic iterations per generator iteration
+        -> files_path: where to read the 'spectra' data from. Ignored when using other 'data_name' 
+           options 
+        -> files_name: name of the data files. If 'None', data_name is instead used
+
+        Return:
+        -> nothing
         """
         self.sess = sess
         self.in_height = in_height
@@ -54,6 +63,7 @@ class _GAN(abc.ABC):
             self.pics_save_names = (self.data_name+'_data_', self.data_name+'_gen_')
         self.d_iters = d_iters
         self.files_path = files_path
+        self.files_name = files_name
 
         self.alpha = 0.2 #leaky relu parameter
         self.image_datasets = {'mnist', 'fashion_mnist', 'cifar10'}
@@ -67,22 +77,40 @@ class _GAN(abc.ABC):
     def _discriminator(self, noise, drop):
         raise NotImplementedError('Please implement the discriminator in your subclass.')
 
-    def _load_data(self, ret=False, data_name=None, data_path=None, data_size=None):
+    def _load_data(self, ret=False, files_name=None, data_name=None, data_path=None, data_size=None):
         """
-        When ret==True the function returns the data and does not store it as a class variable.
-        This is useful when using datasets that were not used to train the model.
-        Use the 'data_name' and 'data_path' argument to specify the name and path 
-        of the dataset when ret==True
+        Loads the training data (must be stored in TFRecord format).
+        
+        Arguments:
+        -> ret: when ret==True the function returns the data and does not store it as a class variable.
+           This is useful when using datasets that were not used to train the model.
+        -> files_name: name of the files of the dataset to be considered. If 'None' data_name will
+           be instead used.
+        -> data_name: name of the dataset to be considered. Ex: mnist, spectra
+        -> data_path: path of the dataset to be considered
+        -> data_size: number of elements of the dataset to be considered
+
+        Returns:
+        -> shuffled tf.Dataset when ret==True
+        -> number of batches (calculated using data_size) when ret==True
+        -> nothing when ret==False
         """
-        if (data_name == None or data_name in self.image_datasets) and data_path != None:
+        if (data_name == None or data_name in self.image_datasets) and data_path is not None:
             raise ValueError('It makes no sense to specify the data_path with this data_name.')
         if data_path != None and ret==False:
             raise ValueError('You cannot save a dataset as a class variable [ret==False]'
                              'when using a custom data_path.')
-        if data_name == None:
+        if data_name is None:
             data_name = self.data_name
-        if data_size == None:
+        if files_name is None:
+            if self.files_name is None:
+                files_name = self.data_name
+            else:
+                files_name = self.files_name
+        if data_size is None:
             data_size = self.dataset_size
+        if data_path is None:
+            data_path = self.files_path
 
         if data_name in self.image_datasets:
             if data_name == 'mnist':
@@ -105,16 +133,13 @@ class _GAN(abc.ABC):
             self.nbatches = nbatches
 
         else:
-            if self.files_path == None:
+            if self.files_path is None:
                 raise ValueError('The path of the training data files must be specified.')
-            if data_size == None:
+            if data_size is None:
                 raise ValueError('The size of the training data must be specified.')
 
             if data_name == 'spectra':
-                if data_path == None:
-                    dataset = read_data(self.files_path+data_name+'.tfrecord', self.in_height)
-                else:
-                    dataset = read_data(data_path+data_name+'.tfrecord', self.in_height)
+                    dataset = read_data(data_path+files_name+'.tfrecord', self.in_height)
 
             nbatches = int(np.ceil(data_size/self.batch_size))
 
@@ -458,9 +483,9 @@ class _GAN(abc.ABC):
         next_element = iterator.get_next()
         self.sess.run(iterator.initializer)
 
-        if additional_ninputs == None:
+        if additional_ninputs is None:
             additional_ninputs = self.dataset_size
-        if additional_data_name != None:
+        if additional_data_name is not None:
             dataset2, nbatches2 = self._load_data(ret=True, 
                                                   data_name=additional_data_name,
                                                   data_path=additional_data_path,
@@ -499,8 +524,8 @@ class _GAN(abc.ABC):
                     break
 
             save_start = 0
-            count=0
-            if additional_data_name != None:
+            count = 0
+            if additional_data_name is not None:
                 dset = group.create_dataset(additional_data_name+'_additional', 
                                             (additional_ninputs, M), dtype=np.float32) 
                 for b in range(nbatches2):
