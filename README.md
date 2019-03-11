@@ -10,6 +10,6 @@ This code implements a one-dimensional Generative Adversarial Network which perf
 Code that explores the possibility of using Generative Adversarial Networks to detect outliers.
 
 ### Acknowledgements ###
-I thank my supervisor, Dr. Karl Glazebrook, for having given the opportunity to work in such an interesting project during 5 months.
+I thank my supervisor, Dr. Karl Glazebrook, for having given both the opportunity and funding to work in such an interesting project during 5 months.
 I further thank PhD candidate Colin Jacobs for being so nice and helpful during my stay.
 I developed the project at Swinburne University of Technology, in Melbourne, Australia.
