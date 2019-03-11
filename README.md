@@ -6,7 +6,7 @@ This code implements a one-dimensional Generative Adversarial Network which perf
 
 * It uses the trained model to generate an urbitrarily large number of fake spectra
 
-* It access the layers of the discriminator after training in order to show that outlier detection is possible to perform
+* It access the layers of the discriminator after training in order to show that it is possible to perform outlier detection with GANs.
 Code that explores the possibility of using Generative Adversarial Networks to detect outliers.
 
 ### Acknowledgements ###
