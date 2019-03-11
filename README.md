@@ -1,4 +1,4 @@
-## OutliersGAN ##
+# OutliersGAN #
 
 This code implements a one-dimensional Generative Adversarial Network which performs the following tasks:
 
@@ -9,6 +9,6 @@ This code implements a one-dimensional Generative Adversarial Network which perf
 * It access the layers of the discriminator after training in order to show that outlier detection is possible to perform
 Code that explores the possibility of using Generative Adversarial Networks to detect outliers.
 
-# Acknowledgements #
+### Acknowledgements ###
 I thank my supervisor, Dr. Karl Glazebrook, for having given the opportunity to work in such an interesting project during 5 months.
 I developed the project at Swinburne University of Technology, in Melbourne, Australia.
