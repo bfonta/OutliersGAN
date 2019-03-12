@@ -2,23 +2,25 @@ import os
 import abc
 import h5py
 import time
+import logging
+import traceback
 import numpy as np
 #np.set_printoptions(threshold=np.nan)
 import tensorflow as tf
 from src.utilities import log_tf_files, tboard_concat
 from src.utilities import PlotGenSamples, plot_predictions
 from src.models.utilities import minibatch_discrimination, noise
-from src.data.data import read_spectra_data as read_data
+from src.data.tfrecords import read_spectra_data as read_data
 
 class _GAN(abc.ABC):
     """
     Base class for implementing GAN-like models.
     """
-    def __init__(self, sess, mode='original', checkpoint_dir, tensorboard_dir, 
-                 in_width=28, in_height=28, nchannels=1,
-                 batch_size=128, noise_dim=100, opt_pars=(0.0001,0.5,0.999), d_iters=1, 
+    def __init__(self, sess, mode, checkpoint_dir, tensorboard_dir, 
+                 in_width, in_height, nchannels,
+                 batch_size, noise_dim, opt_pars, d_iters=1, 
                  dataset_size=None, data_name='mnist', files_name=None, files_path=None,
-                 pics_save_names=(None,None))
+                 pics_save_names=(None,None)):
         """
         Arguments:
 
@@ -69,6 +71,9 @@ class _GAN(abc.ABC):
         self.image_datasets = {'mnist', 'fashion_mnist', 'cifar10'}
         self.d_layers_names, self.g_layers_names = (() for _ in range(2))
 
+        logging.basicConfig(filename='/tmp/'+self.files_name+'_'
+                            +str(checkpoint_dir.split('/')[-2])+'.out')
+
     @abc.abstractmethod
     def _generator(self, noise, drop):
         raise NotImplementedError('Please implement the generator in your subclass.')
@@ -95,59 +100,65 @@ class _GAN(abc.ABC):
         -> number of batches (calculated using data_size) when ret==True
         -> nothing when ret==False
         """
-        if (data_name == None or data_name in self.image_datasets) and data_path is not None:
-            raise ValueError('It makes no sense to specify the data_path with this data_name.')
-        if data_path != None and ret==False:
-            raise ValueError('You cannot save a dataset as a class variable [ret==False]'
-                             'when using a custom data_path.')
-        if data_name is None:
-            data_name = self.data_name
-        if files_name is None:
-            if self.files_name is None:
-                files_name = self.data_name
-            else:
-                files_name = self.files_name
-        if data_size is None:
-            data_size = self.dataset_size
-        if data_path is None:
-            data_path = self.files_path
+        try:
+            if (data_name == None or data_name in self.image_datasets) and data_path is not None:
+                raise ValueError('It makes no sense to specify the data_path with this data_name.')
+            if data_path != None and ret==False:
+                raise ValueError('You cannot save a dataset as a class variable [ret==False]'
+                                 'when using a custom data_path.')
 
-        if data_name in self.image_datasets:
-            if data_name == 'mnist':
-                (train_data, train_labels), _ = tf.keras.datasets.mnist.load_data()
-            elif data_name == 'fashion_mnist':
-                (train_data, train_labels), _ = tf.keras.datasets.fashion_mnist.load_data()
-            elif data_name == 'cifar10':
-                (train_data, train_labels), _ = tf.keras.datasets.cifar10.load_data()
-
-            train_data = train_data / 255 if data_size==None else train_data[data_size] / 255
-            dataset_size = len(train_data)
-            dataset = tf.data.Dataset.from_tensor_slices((train_data, train_labels))
-            dataset = dataset.shuffle(buffer_size=dataset_size).repeat(1).batch(self.batch_size)
-            nbatches = int(np.ceil(dataset_size/self.batch_size))
-
-            if ret:
-                return dataset, nbatches
-
-            self.dataset = dataset
-            self.nbatches = nbatches
-
-        else:
-            if self.files_path is None:
-                raise ValueError('The path of the training data files must be specified.')
+            if data_name is None:
+                data_name = self.data_name
+            if files_name is None:
+                if self.files_name is None:
+                    files_name = self.data_name
+                else:
+                    files_name = self.files_name
             if data_size is None:
-                raise ValueError('The size of the training data must be specified.')
+                data_size = self.dataset_size
+            if data_path is None:
+                data_path = self.files_path
 
-            if data_name == 'spectra':
+            if data_name in self.image_datasets:
+                if data_name == 'mnist':
+                    (train_data, train_labels), _ = tf.keras.datasets.mnist.load_data()
+                elif data_name == 'fashion_mnist':
+                    (train_data, train_labels), _ = tf.keras.datasets.fashion_mnist.load_data()
+                elif data_name == 'cifar10':
+                    (train_data, train_labels), _ = tf.keras.datasets.cifar10.load_data()
+
+                train_data = train_data / 255 if data_size==None else train_data[data_size] / 255
+                dataset_size = len(train_data)
+                dataset = tf.data.Dataset.from_tensor_slices((train_data, train_labels))
+                dataset = dataset.shuffle(buffer_size=dataset_size).repeat(1).batch(self.batch_size)
+                nbatches = int(np.ceil(dataset_size/self.batch_size))
+
+                if ret:
+                    return dataset, nbatches
+
+                self.dataset = dataset
+                self.nbatches = nbatches
+
+            else:
+                if self.files_path is None:
+                    raise ValueError('The path of the training data files must be specified.')
+                if data_size is None:
+                    raise ValueError('The size of the training data must be specified.')
+
+                if data_name == 'spectra':
                     dataset = read_data(data_path+files_name+'.tfrecord', self.in_height)
 
-            nbatches = int(np.ceil(data_size/self.batch_size))
+                nbatches = int(np.ceil(data_size/self.batch_size))
 
-            if ret:
-                return dataset.batch(self.batch_size), nbatches
+                if ret:
+                    return dataset.batch(self.batch_size), nbatches
 
-            self.dataset = dataset.repeat(1).batch(self.batch_size)
-            self.nbatches = nbatches
+                self.dataset = dataset.repeat(1).batch(self.batch_size)
+                self.nbatches = nbatches
+
+        except Exception as e:
+            logging.error(traceback.format_exc())
+            raise
 
     def _pre_process(self, inputs, params):
         if self.data_name == 'mnist' or self.data_name == 'fashion_mnist':
@@ -245,13 +256,16 @@ class _GAN(abc.ABC):
             self.G_train_op = G_optimizer.minimize(self.G_loss, var_list=G_trainable_vars, 
                                                    name='G_train_op')
 
-    def train(self, nepochs, drop_d=0.7, drop_g=0.3, flip_prob=0.05):
+    def train(self, nepochs, drop_d=0.7, drop_g=0.3, flip_prob=0.05, restore=False):
         """
+        Performs the training of the GAN.
+
         Arguments:
-        nepochs: number of training epochs (one epoch corresponds to looking at every data item once)
-        drop_d: dropout in the discriminator
-        drop_g: dropout in the generator
-        flip_prob: label flipping probability for the discriminator
+        -> nepochs: number of training epochs (one epoch corresponds to looking at every data item once)
+        -> drop_d: dropout in the discriminator
+        -> drop_g: dropout in the generator
+        -> flip_prob: label flipping probability for the discriminator
+        -> restore: train starting from most recent checkpoint (defined by self.checkpoint_dir)
         """
         self._build_model(self._generator, self._discriminator, 
                           lr=self.opt_pars[0], beta1=self.opt_pars[1], beta2=self.opt_pars[2])
@@ -268,6 +282,8 @@ class _GAN(abc.ABC):
         dropout_prob_G = drop_g
 
         saver = tf.train.Saver(max_to_keep=5, keep_checkpoint_every_n_hours=1)
+        if restore:
+            saver.restore(self.sess, tf.train.latest_checkpoint(self.checkpoint_dir))
 
         init = tf.group(tf.local_variables_initializer(), tf.global_variables_initializer())
         self.sess.run(init)
@@ -557,8 +573,8 @@ class DCGAN(_GAN):
     Generative Adversarial Network using a Deep Convolutional architecture
     Reference: Radford et al; ArXiv: 1511.06434
     """
-    def __init(self, *args, **kwargs):
-        super.__init__(*args, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._load_data()
 
         if self.data_name in self.image_datasets:
