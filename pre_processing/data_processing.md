@@ -37,7 +37,7 @@ python spectra_list_values.py
 
 a new file will be created with all the relevant information. Do not forget to check all the paths being used.
 
-**5)** At this point we have all information needed to store the data in TFRecords format. We use the ```real_spectra_to_tfrecord``` function stored in ```src/data/tfrecords.py``` to make the conversion. By slightly changing the function, the user can select which of the parameters saved with ```spectra_list_values.py``` wants to convert to TFRecord, or even using them directly in the spectra.
+**5)** At this point we have all information needed to store the data in TFRecords format. We use the ```real_spectra_to_tfrecord``` function stored in ```src/data/tfrecords.py``` to make the conversion. By slightly changing the function, the user can select which of the parameters saved with ```spectra_list_values.py``` wants to convert to TFRecord, or even using them directly in the spectra. The macro ```writer.py``` shows how to run this function.
 
 * Why using the TFRecord file format at all? It is the recommended format when using Tensorflow, irrespective of the data being used.
 
