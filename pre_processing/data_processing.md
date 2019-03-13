@@ -32,7 +32,7 @@ but make sure there is enough free disk space in the target folder. This step is
 **4)** Once the spectral data has been downloaded, it is useful to store some parameters along with their local path. For instance, when one wants to deredshift a spectra, one needs to know the redshift of each spectra. This information is not provided in the 'lite' version of the SDSS spectra. If we run:
 
 ```bash
-bash spectra_list_values.sh
+python spectra_list_values.py
 ```
 
 a new file will be created with all the relevant information. Do not forget to check all the paths being used.
