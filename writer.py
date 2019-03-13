@@ -1,7 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from src.data.spectra_generation import gen_spectrum_2lines as gen
-from src.data.data import gen_spectra_to_tfrecord as totf
+#from src.data.spectra_generation import gen_spectrum_2lines as gen
+from src.data.tfrecords import real_spectra_to_tfrecord
+#from src.data.tfrecords import pictures_to_tfrecord
+#from src.data.tfrecords import gen_spectra_to_tfrecord
 
 def plot(x, y, s):
     plt.plot(x, y)
@@ -9,7 +11,13 @@ def plot(x, y, s):
     #plt.savefig(s)
     plt.close()
 
-totf(200000, 3500, '/fred/oz012/Bruno/data/gen_fixed_ratio_4lines/gen_', 20, norm=True)
+#pictures_to_tfrecord(filename='/fred/oz012/Bruno/data/celebA/celebA', 
+#                     data_folder='/fred/oz012/Bruno/data/celebA/', nshards=100)
+real_spectra_to_tfrecord(filename='/fred/oz012/Bruno/data/spectra/legacy/legacy_bit6/spectra_grid', 
+                         table_path='/fred/oz012/Bruno/data/Legacy6ListAllValues.csv', 
+                         nshards=100, write_fits=True)
+#gen_spectra_to_tfrecord(100000, 3500, '/fred/oz012/Bruno/data/spectra/legacy/outliers/spectra',100,norm=True)
+
 """
 classes= [3]
 x, y, _ = gen(len(classes), 3500, classes, norm=True)
