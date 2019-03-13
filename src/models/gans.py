@@ -10,7 +10,7 @@ import tensorflow as tf
 from src.utilities import log_tf_files, tboard_concat
 from src.utilities import PlotGenSamples, plot_predictions
 from src.models.utilities import minibatch_discrimination, noise
-from src.data.tfrecords import read_spectra_data as read_data
+from src.data.tfrecords import read_spectra_data as read_data, to_fits
 
 class _GAN(abc.ABC):
     """
@@ -431,7 +431,20 @@ class _GAN(abc.ABC):
 
         plot_predictions(ps, '1')
 
-    def generate(self, N, n_per_plot, name):
+    def generate(self, N, n, name, write_fits=False):
+        """
+        Generate fake spectra using trained GAN model.
+
+        Arguments:
+        -> N: number of files to create (plots or FITS)
+        -> n: number of spectra to store in each file
+        -> name: name of the files (numbers are added according to N)
+        -> write_fits: whether to write the spectra to FITS files with WCS conversion. This assumes 
+        that a fixed grid was defined.
+
+        Returns:
+        -> nothing
+        """
         latest_checkpoint = tf.train.latest_checkpoint(self.checkpoint_dir)
         saver = tf.train.import_meta_graph(latest_checkpoint + '.meta')
         G_output = tf.get_default_graph().get_tensor_by_name('G/output:0')
@@ -449,10 +462,17 @@ class _GAN(abc.ABC):
 
         for i in range(N):
             gen_samples = self.sess.run(G_output, 
-                                        feed_dict={gen_data_ph: noise(n_per_plot,self.noise_dim),
+                                        feed_dict={gen_data_ph: noise(n,self.noise_dim),
                                                    dropout_prob_ph: 0., 
-                                                   batch_size_ph: n_per_plot})
-            self._plot(gen_samples, params, name+str(i), n=n_per_plot)
+                                                   batch_size_ph: n})
+            self._plot(gen_samples, params, name+str(i), n=n)
+            if write_fits:
+                init_l = np.log10(params[0][0][0])
+                delta_l = np.log10(params[0][0][1])-np.log10(params[0][0][0])
+                assert np.isclose(delta_l, np.log10(params[0][0][1000])-np.log10(params[0][0][999]),
+                                  atol=1e-6)
+                gen_samples = gen_samples.reshape((n,gen_samples.shape[1]))
+                to_fits(gen_samples, name+str(i), params=(1., delta_l, init_l))
 
     def save_features(self, ninputs, save_path, 
                       additional_data_name=None, additional_data_path=None, additional_ninputs=None):

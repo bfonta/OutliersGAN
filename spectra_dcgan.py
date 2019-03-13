@@ -22,18 +22,18 @@ def main(argv=None):
                       data_name='spectra',
                       #dataset_size=345960,
                       dataset_size=315082, #Invalid: 391672
-                      #pics_save_names=('spectra_data_wgangp_','spectra_gen_wgangp_'),
-                      pics_save_names=('spectra_data_wgangp_legacy_','spectra_gen_wgangp_legacy_'),
+                      pics_save_names=('spec_data_grid_','spec_gen_grid_'),
                       #files_path='/fred/oz012/Bruno/data/spectra/boss/loz/',
                       files_path='/fred/oz012/Bruno/data/spectra/legacy/legacy_bit6/',
+                      files_name='spectra_grid',
                       checkpoint_dir=checkpoint_dir,
                       tensorboard_dir=tensorboard_dir)
 
         if FLAGS.mode == 'train':
-            dcgan.train(nepochs, drop_d=0.0, drop_g=0.0, flip_prob=0.15)
+            dcgan.train(nepochs, drop_d=0.0, drop_g=0.0, flip_prob=0.15, restore=False)
 
         elif FLAGS.mode == 'generate':
-            dcgan.generate(N=3, n_per_plot=5, name='generate')
+            dcgan.generate(N=1, n=5, name='generate', write_fits=True)
 
         elif FLAGS.mode == 'predict':
             dcgan.predict(n_pred=514)
