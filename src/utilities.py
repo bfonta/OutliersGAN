@@ -6,7 +6,6 @@ import os
 import glob
 import numpy as np
 import tensorflow as tf
-from astropy.io import fits
 from scipy import interpolate
 
 def write_to_file(fname, *args):
@@ -32,20 +31,6 @@ def read_from_file(fname, splitter=','):
             for i,val in enumerate(values):
                 data[i].append(float(val))
     return [data[i] for i in range(ncols)]
-
-def spectra_fits_data(filename_pattern, batch_size):
-    filenames = glob.glob(filename_pattern+'*.fits')
-    loglam, flux = ([] for _ in range(2))
-    
-    for i,filename in enumerate(filenames):
-        with fits.open(filename) as hdul:
-            data = hdul[1].data
-            loglam.append(data.field('loglam'))
-            flux.append(data.field('flux'))
-            if (i+1)%batch_size == 0:
-                yield loglam, flux
-                del loglam[:]
-                del flux[:]
 
 def plot_predictions(pred, name):
     """
