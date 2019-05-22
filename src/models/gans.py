@@ -10,7 +10,8 @@ import tensorflow as tf
 from src.utilities import log_tf_files, tboard_concat
 from src.utilities import PlotGenSamples, plot_predictions
 from src.models.utilities import minibatch_discrimination, noise
-from src.data.tfrecords import read_spectra_data as read_data, to_fits
+from src.data.tfrecords import read_spectra_data as read_data
+from src.data.fits import to_fits
 
 class _GAN(abc.ABC):
     """
