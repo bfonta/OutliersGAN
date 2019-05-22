@@ -127,7 +127,7 @@ class _GAN(abc.ABC):
                 elif data_name == 'cifar10':
                     (train_data, train_labels), _ = tf.keras.datasets.cifar10.load_data()
 
-                train_data = train_data / 255 if data_size==None else train_data[data_size] / 255
+                train_data = train_data / 255 if data_size==None else train_data[:data_size] / 255
                 dataset_size = len(train_data)
                 dataset = tf.data.Dataset.from_tensor_slices((train_data, train_labels))
                 dataset = dataset.shuffle(buffer_size=dataset_size).repeat(1).batch(self.batch_size)
@@ -147,7 +147,6 @@ class _GAN(abc.ABC):
 
                 if data_name == 'spectra':
                     dataset = read_data(data_path+files_name+'.tfrecord', self.in_height)
-
                 nbatches = int(np.ceil(data_size/self.batch_size))
 
                 if ret:
@@ -209,7 +208,7 @@ class _GAN(abc.ABC):
             self.D_loss = tf.reduce_mean(self.D_fake_logits) - tf.reduce_mean(self.D_real_logits)
             self.G_loss = -tf.reduce_mean(self.D_fake_logits)
             self.lambda_gp = tf.placeholder_with_default(10., shape=(), name='lambda_gp_ph')
-            self.D_loss += self.lambda_gp * gradient_penalty
+            self.D_loss += self.lambda_gp * gradient_penalty * tf.maximum(0., -self.D_loss)
 
         else:
             cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits
@@ -475,7 +474,7 @@ class _GAN(abc.ABC):
                 to_fits(gen_samples, name+str(i), params=(1., delta_l, init_l))
 
     def save_features(self, ninputs, save_path, 
-                      additional_data_name=None, additional_data_path=None, additional_ninputs=None):
+                      additional_files_name=None, additional_data_path=None, additional_ninputs=None):
         """
         Saves features obtained by running the data through a saved discriminator model.
         The layer from where the data is retrieved is not the last one.
@@ -489,10 +488,10 @@ class _GAN(abc.ABC):
            for different runs, since the datasets are always shuffled.
         ->save_path: 
            where to save the hdf5 file. The extension should not be included.
-        ->additional_data_name: 
-           name of a dataset. This allows the user to save the features for more than one dataset.
-           In order to see the discriminator response, it is useful to be able to run data on a model
-           that was trained using different data.
+        ->additional_files_name: 
+           name of the files to be saved. This allows the user to save the features for more than one 
+           dataset. In order to see the discriminator response, it is useful to be able to run data on 
+           a model that was trained using different data.
         ->additional_data_path: 
            path to the folder where the additional dataset is stored. The dataset should be stored 
            in that folder in one or more Tfrecord shards with the following names:  
@@ -506,9 +505,16 @@ class _GAN(abc.ABC):
         """ 
         latest_checkpoint = tf.train.latest_checkpoint(self.checkpoint_dir)
         saver = tf.train.import_meta_graph(latest_checkpoint + '.meta')
-        D_feats = tf.get_default_graph().get_tensor_by_name('D/layer4/BiasAdd:0')
-        D_feats = tf.reshape(D_feats, shape=[-1,7*1*1024])
         D_noise = noise(ninputs, self.noise_dim)
+
+        D_feats = tf.get_default_graph().get_tensor_by_name('D/layer2/BiasAdd:0')
+        D_feats_shape = D_feats.get_shape()
+        D_feats = tf.reshape(D_feats, 
+                             shape=[-1,D_feats_shape[1]*D_feats_shape[2]*D_feats_shape[3]])
+        D_feats2 = tf.get_default_graph().get_tensor_by_name('D/layer4/BiasAdd:0')
+        D_feats2_shape = D_feats2.get_shape()
+        D_feats2 = tf.reshape(D_feats2, 
+                              shape=[-1,D_feats2_shape[1]*D_feats2_shape[2]*D_feats2_shape[3]])
             
         data_ph = tf.get_default_graph().get_tensor_by_name('D/data_ph:0')
         dropout_prob_ph = tf.get_default_graph().get_tensor_by_name('dropout_prob_ph:0')
@@ -521,9 +527,10 @@ class _GAN(abc.ABC):
 
         if additional_ninputs is None:
             additional_ninputs = self.dataset_size
-        if additional_data_name is not None:
+        if additional_files_name is not None:
             dataset2, nbatches2 = self._load_data(ret=True, 
-                                                  data_name=additional_data_name,
+                                                  data_name=self.data_name,
+                                                  files_name=additional_files_name,
                                                   data_path=additional_data_path,
                                                   data_size=additional_ninputs)
             iterator2 = dataset2.make_initializable_iterator()
@@ -533,7 +540,7 @@ class _GAN(abc.ABC):
         saver.restore(self.sess, latest_checkpoint)
 
         save_start = 0
-        M = D_feats.get_shape()[1]
+        M = D_feats.get_shape()[1] + D_feats2.get_shape()[1]
         
         with h5py.File(save_path+'.hdf5', 'w') as f:
             
@@ -548,10 +555,11 @@ class _GAN(abc.ABC):
                 if (b+1)*self.batch_size > ninputs:
                     inputs = inputs[:ninputs - b*self.batch_size]
 
-                feats = self.sess.run(D_feats,
+                feats, feats2 = self.sess.run([D_feats, D_feats2],
                                       feed_dict={data_ph: inputs, #gen_data_ph: D_noise,
                                                  dropout_prob_ph: 0.,
                                                  batch_norm_ph: False})
+                feats = np.concatenate((feats,feats2), axis=1)
                 dset[save_start:save_start+len(feats), :] = feats
                 save_start += len(feats)
 
@@ -561,8 +569,8 @@ class _GAN(abc.ABC):
 
             save_start = 0
             count = 0
-            if additional_data_name is not None:
-                dset = group.create_dataset(additional_data_name+'_additional', 
+            if additional_files_name is not None:
+                dset = group.create_dataset(self.data_name+'_additional', 
                                             (additional_ninputs, M), dtype=np.float32) 
                 for b in range(nbatches2):
                     try:
@@ -574,10 +582,11 @@ class _GAN(abc.ABC):
                             inputs = inputs[:additional_ninputs - b*self.batch_size]
 
                         count += len(inputs)
-                        feats = self.sess.run(D_feats,
+                        feats, feats2 = self.sess.run([D_feats,D_feats2],
                                               feed_dict={data_ph: inputs, #gen_data_ph: D_noise,
                                                          dropout_prob_ph: 0.,
                                                          batch_norm_ph: False})
+                        feats = np.concatenate((feats,feats2), axis=1)
                         dset[save_start:save_start+len(feats), :] = feats
                         save_start += len(feats)
 
