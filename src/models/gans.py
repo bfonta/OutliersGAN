@@ -466,10 +466,10 @@ class _GAN(abc.ABC):
                                                    batch_size_ph: n})
             self._plot(gen_samples, params, name+str(i), n=n)
             if write_fits:
-                init_l = np.log10(params[0][0][0])
-                delta_l = np.log10(params[0][0][1])-np.log10(params[0][0][0])
+                init_l = np.log10(params[0][0][0]) #initial wavelength
+                delta_l = np.log10(params[0][0][1])-np.log10(params[0][0][0]) #wavelengthth bin width
                 assert np.isclose(delta_l, np.log10(params[0][0][1000])-np.log10(params[0][0][999]),
-                                  atol=1e-6)
+                                  atol=1e-6) #check bin uniformity
                 gen_samples = gen_samples.reshape((n,gen_samples.shape[1]))
                 to_fits(gen_samples, name+str(i), params=(1., delta_l, init_l))
 
