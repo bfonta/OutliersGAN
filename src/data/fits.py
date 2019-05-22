@@ -36,13 +36,17 @@ def to_fits(y, name, params=(None,None,None), x=None, labels=('wave','flux')):
         w.wcs.ctype = ["WAVE"]
         w.wcs.cunit = ["Angstrom"]    
 
-        header = w.to_header()
-        hdu1 = fits.PrimaryHDU()
-
-        hdu_im = []
         for i in range(len(y)):
+            header = w.to_header()
+            hdu1 = fits.PrimaryHDU()
+            hdu1.data = y[i]
+            """
+            hdu_im = []
+            for i in range(1,len(y)+1):
             hdu_im.append(fits.ImageHDU(header=header))
             hdu_im[-1].data = y[i]
-
-        hdul = fits.HDUList([hdu1, *hdu_im])
-        hdul.writeto(name + '.fits')
+            
+            hdul = fits.HDUList([hdu1, *hdu_im])
+            """
+            hdul = fits.HDUList([hdu1])
+            hdul.writeto(name + '_' + str(i) + '.fits')
