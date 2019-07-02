@@ -9,7 +9,7 @@ def to_fits(y, name, params=(None,None,None), x=None, labels=('wave','flux')):
     """
     Saves 2D data in the FITS format. 
     If 'x' is provided the spectra are saved into a Table, otherwise it encodes the x dimension using WCS. 
-    All spectra will be stored to the same file under a ImageHDU each. 
+    All spectra will be stored to the same file under an ImageHDU each. 
     If you wish to store one spectra per FITS file, just call this function multiple times!
     
     Arguments:
@@ -38,7 +38,7 @@ def to_fits(y, name, params=(None,None,None), x=None, labels=('wave','flux')):
 
         for i in range(len(y)):
             header = w.to_header()
-            hdu1 = fits.PrimaryHDU()
+            hdu1 = fits.PrimaryHDU(header=header)
             hdu1.data = y[i]
             """
             hdu_im = []
