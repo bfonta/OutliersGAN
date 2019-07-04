@@ -11,4 +11,16 @@ def add_args(parser):
         default='train',
         help='Mode to run the model.'
     )
+    parser.add_argument(
+        '--fname',
+        type=str,
+        default='train',
+        help='Input file name.'
+    )
+    parser.add_argument(
+        '--noGPU',
+        type=int,
+        default=0,
+        help='Prevents Tensorflow from using GPU.'
+    )
     return parser.parse_known_args()

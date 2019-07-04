@@ -33,8 +33,8 @@ def to_fits(y, name, params=(None,None,None), x=None, labels=('wave','flux')):
         w.wcs.crpix = [params[0]]
         w.wcs.cdelt = np.array([params[1]])
         w.wcs.crval = [params[2]]
-        w.wcs.ctype = ["WAVE"]
-        w.wcs.cunit = ["Angstrom"]    
+        #w.wcs.ctype = ["WAVE"]
+        w.wcs.cunit = ["Angstrom"]
 
         for i in range(len(y)):
             header = w.to_header()
