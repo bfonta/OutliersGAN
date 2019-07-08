@@ -38,6 +38,8 @@ def to_fits(y, name, params=(None,None,None), x=None, labels=('wave','flux')):
 
         for i in range(len(y)):
             header = w.to_header()
+            header['DC-FLAG'] = 1
+            print(header)            
             hdu1 = fits.PrimaryHDU(header=header)
             hdu1.data = y[i]
             """
