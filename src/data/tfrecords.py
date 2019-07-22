@@ -7,8 +7,7 @@ from astropy.io import fits
 import matplotlib.pyplot as plt
 from ..data.spectra_generation import gen_spectrum_2lines
 from ..data.fits import to_fits
-from ..utilities import resampling_1d
-
+from ..utilities import resampling_1d, is_invalid
 
 def _bytes_feature(Value):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[Value]))
@@ -19,16 +18,7 @@ def _int_feature(Value):
 def _float_feature(Value):
     return tf.train.Feature(float_list=tf.train.FloatList(value=Value))
 
-def _is_invalid(arr):
-    def _check_only_zeros(arr):
-        """Returns True if all the elements of arr are zero"""
-        return not np.any(arr)
-    def _check_infinite(arr):
-        """Returns True if there is at least one element in arr is either infinite or nan"""
-        return not np.all(np.isfinite(arr))
-    return _check_only_zeros(arr) or _check_infinite(arr)
-
-def real_spectra_to_tfrecord(filename, table_path, nshards=1):
+def real_spectra_to_tfrecord(filename, table_path, nshards=1, write_fits=False):
     """
     Saves spectra in the TFRecord format. 
     The last shard is equal or smaller than all others.
@@ -36,19 +26,19 @@ def real_spectra_to_tfrecord(filename, table_path, nshards=1):
         -> filename (string): name of the file where the data is going to be stored
         -> table_path (string): csv file
         -> nshards (int): number of shards for splitting the data
-        """
+    """
     df = pd.read_csv(table_path)
     nspectra = len(df.axes[0])
-    bounds = 3750, 7000
+    #bounds = 3750, 7000 #used for all spectra except qso
+    bounds = 1800, 4150
     tot_length = 3500
     shard_width = int(nspectra/nshards)+1
     err_counter = 0
     for i_shard in range(nshards):
         with tf.python_io.TFRecordWriter(filename+str(i_shard)+'.tfrecord') as _w:
             for i_spectrum in range(i_shard*shard_width,(i_shard+1)*shard_width): 
-                if i_spectrum%2000==0 and i_spectrum!=0:
+                if i_spectrum%2000==0:
                     print('{} iteration'.format(i_spectrum), flush=True)
-                    quit()
                 if i_spectrum>=nspectra:
                     break
                 with fits.open(df['local_path'].iloc[i_spectrum]) as hdu:
@@ -57,14 +47,18 @@ def real_spectra_to_tfrecord(filename, table_path, nshards=1):
                     rshift_ = df['redshift'].iloc[i_spectrum].astype(np.float32)
                     lam_ = lam_ / (1 + rshift_)
 
-                    if _is_invalid(flux_):
+                    if is_invalid(flux_):
                         err_counter += 1
                         continue
 
                     if lam_[0] < bounds[0] and lam_[-1] > bounds[1]:
                         lam_, flux_ = resampling_1d(x=lam_, y=flux_, bounds=bounds, size=tot_length)
-                        to_fits(lam_, flux_, 'wavelength', 'flux', 'data_'+str(i_spectrum)+'.fits')
+                        if write_fits:
+                            to_fits(x=lam_, y=flux_, name='data_'+str(i_spectrum))
+                            quit()
                     else:
+                        print("ERROR: {}".format(i_spectrum))
+                        err_counter += 1
                         continue
 
                     Example = tf.train.Example(features=tf.train.Features(feature={

@@ -89,13 +89,29 @@ def resampling_1d(x, y, bounds=(3750,7000), size=3500):
     ynew = f(xnew)
     return xnew, ynew
 
+def is_invalid(arr):
+    def _check_mostly_zeros(arr):
+        """Returns True if more than 95% of the elements of arr are zero"""
+        count = 0
+        for elem in arr:
+            if elem == 0.:
+                count += 1
+        if count>0.95*len(arr):
+            print("ERROR: _check_mostly_zeros")
+            return True
+        return False
+    def _check_infinite(arr):
+        """Returns True if there is at least one element in arr is either infinite or nan"""
+        return not np.all(np.isfinite(arr))
+    return _check_mostly_zeros(arr) or _check_infinite(arr)
+
 class PlotGenSamples():
     def __init__(self, ncols=6, nrows=6, figsize=(16,12)):
         self.nrows = nrows
         self.ncols = ncols
         self.figsize = figsize
 
-    def plot_spectra(self, samples, lambdas, name=''):
+    def plot_spectra(self, samples, lambdas, name='', fix_size=True):
         self.fig, self.ax = plt.subplots(nrows=self.nrows, ncols=self.ncols, 
                                          squeeze=False, sharex=True, 
                                          figsize=self.figsize)
@@ -105,8 +121,10 @@ class PlotGenSamples():
             for icol in range(self.ncols):
                 self.ax[irow, icol].grid()
                 self.ax[irow, icol].set_ylabel('Flux')
-                self.ax[irow, icol].plot(lambdas[i].reshape(3500), samples[i].reshape(3500))
-                #self.ax[irow, icol].plot(lambdas[i], samples[i])
+                if fix_size:
+                    self.ax[irow, icol].plot(lambdas[i].reshape(3500), samples[i].reshape(3500))
+                else:
+                    self.ax[irow, icol].plot(lambdas[i], samples[i])
                 i = i + 1
         plt.xlabel('Wavelength [A]')
         plt.savefig('/fred/oz012/Bruno/figs/{}.png'.format(name))
