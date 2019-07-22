@@ -2,7 +2,7 @@ import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 import matplotlib.gridspec as gridspec
-import os
+import os, sys
 import glob
 import numpy as np
 import tensorflow as tf
@@ -81,12 +81,17 @@ def tboard_concat(samples, side):
     return tboard_sample
 
 def resampling_1d(x, y, bounds=(3750,7000), size=3500):
-    """Perform 1d interpolation
+    """Perform 1d interpolation of linear scale spectra
     Arguments:
     -> x, y: x and y data dimensions. They should include one axis only."""
-    f = interpolate.interp1d(x=x, y=y, kind='linear', assume_sorted=True)
-    xnew = np.logspace(np.log10(bounds[0]), np.log10(bounds[1]), size)
-    ynew = f(xnew)
+    try:
+        f = interpolate.interp1d(x=x, y=y, kind='linear', assume_sorted=True)
+        xnew = np.logspace(np.log10(bounds[0]), np.log10(bounds[1]), size)
+        ynew = f(xnew)
+    except ValueError:
+        print("X bounds: ", x[0], x[-1])
+        print("Interpolated x: ", xnew)
+        raise
     return xnew, ynew
 
 def is_invalid(arr):

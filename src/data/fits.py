@@ -1,10 +1,3 @@
-import os
-import glob
-import numpy as np
-from astropy.io import fits
-
-import matplotlib.pyplot as plt
-
 def to_fits(y, name, params=(None,None,None), x=None, labels=('wave','flux')):
     """
     Saves 2D data in the FITS format. 
@@ -29,6 +22,8 @@ def to_fits(y, name, params=(None,None,None), x=None, labels=('wave','flux')):
 
     else:
         from astropy import wcs
+        from astropy.io import fits
+        import numpy as np
         w = wcs.WCS(naxis=1)
         w.wcs.crpix = [params[0]]
         w.wcs.cdelt = np.array([params[1]])
@@ -39,16 +34,7 @@ def to_fits(y, name, params=(None,None,None), x=None, labels=('wave','flux')):
         for i in range(len(y)):
             header = w.to_header()
             header['DC-FLAG'] = 1
-            print(header)            
-            hdu1 = fits.PrimaryHDU(header=header)
-            hdu1.data = y[i]
-            """
-            hdu_im = []
-            for i in range(1,len(y)+1):
-            hdu_im.append(fits.ImageHDU(header=header))
-            hdu_im[-1].data = y[i]
-            
-            hdul = fits.HDUList([hdu1, *hdu_im])
-            """
-            hdul = fits.HDUList([hdu1])
+            hdu = fits.PrimaryHDU(header=header)
+            hdu.data = y[i]
+            hdul = fits.HDUList([hdu])
             hdul.writeto(name + '_' + str(i) + '.fits')
