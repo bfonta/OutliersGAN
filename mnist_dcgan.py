@@ -30,6 +30,8 @@ def main(argv=None):
             dcgan.generate()
         elif FLAGS.mode == 'predict':
             dcgan.predict()
+        elif FLAGS.mode == 'save_weights':
+            dcgan.save_final_layer()
 
 
 if __name__ == '__main__':

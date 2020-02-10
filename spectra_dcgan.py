@@ -28,7 +28,7 @@ def main(argv=None):
             dataset_size=22791,  
             pics_save_names=("qso_zWarning_data_", "qso_zWarning_gen_"),
             files_path="/fred/oz012/Bruno/data/spectra/qso_zWarning/",
-            files_name="spectra",
+            files_name="spectra2_linearlysampled_",
             checkpoint_dir=checkpoint_dir,
             tensorboard_dir=tensorboard_dir,
         )
@@ -37,7 +37,7 @@ def main(argv=None):
             dcgan.train(nepochs, drop_d=0.0, drop_g=0.0, flip_prob=0.15, restore=False)
 
         elif FLAGS.mode == "generate":
-            dcgan.generate(N=1, n=5, name="generate", write_fits=True)
+            dcgan.generate(N=1, n=30, name=FLAGS.fname, write_fits=True)
 
         elif FLAGS.mode == "predict":
             dcgan.predict(n_pred=514)

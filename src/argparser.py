@@ -23,4 +23,10 @@ def add_args(parser):
         default=0,
         help='Prevents Tensorflow from using GPU.'
     )
+    parser.add_argument(
+        '--data_type',
+        type=str,
+        default=0,
+        help='gal_form_burst or qso_zWarning'
+    )
     return parser.parse_known_args()

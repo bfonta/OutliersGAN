@@ -1,13 +1,42 @@
 import pandas as pd
 
-df = pd.read_csv('/fred/oz012/Bruno/data/BOSS_GALCMASS.csv', skiprows=0)
+df = pd.read_csv('/fred/oz012/Bruno/data/gal_starforming_starburst_zWarning.csv', skiprows=0)
 df = df[['plate', 'mjd', 'fiberid']]
 
-path = '/eboss/spectro/redux/v5_10_0/spectra/lite/'
-with open('/fred/oz012/Bruno/data/BossGALCMASSList.txt', 'w') as f:
+#path = '/eboss/spectro/redux/v5_10_0/spectra/lite/'
+tuple_103 = (1960, 1961, 1962, 1963, 2078, 2079, 2174, 2185, 2247, 2255, 2256, 2333, 2338, 
+             2377, 2475, 2476, 2667, 2671, 2800, 2821, 2887, 2912)
+tuple_104 = (3186, 3242, 3264, 3314, 3109, 3224, 2957, 3326, 3176, 3152, 3380, 3216, 2962,
+             3396, 3180, 3184, 3362, 3388, 3251, 3317, 3374, 3321, 3368, 3237, 3241, 3170,
+             3478, 3230, 3221, 3289, 3192, 3395, 3157, 3307, 3185, 3306, 3161, 3114, 3233,
+             3294, 3174, 3295, 3133, 3105, 3243, 3288, 3211, 3122, 3253, 3144, 3429, 3328,
+             3454, 3428, 3111, 3175, 3128, 3229, 3167, 3132, 3154, 3427, 3246, 3130, 3131, 
+             3177, 3129, 3177, 3156, 3169, 3153, 3156, 3227, 3257, 3325, 3265, 3193, 3320,
+             3291, 3127, 3305, 3325, 3182, 3166, 3151, 3304, 3198, 3171, 3145, 3324, 3252, 
+             3142, 3183, 3234, 3300, 3149, 3228, 3312, 3239, 3406, 3194, 3318, 3367, 3179, 
+             3300, 3467, 3238, 3390, 3284, 3480, 3246, 3223, 3290, 3233, 3259, 3293, 3173,
+             3143, 3299, 3146, 3173, 3233, 3005, 3255, 3296, 3319, 3150, 3181, 3311, 3293,
+             3115, 3442, 3387, 3236, 3375, 3210, 3162, 3135, 3335, 3134, 3160, 3232, 3214,
+             3329, 3287, 3386, 3258, 3215, 3262, 3254, 3331, 3148, 3466, 3240, 3298, 3240,
+             3112, 3386, 3329, 3245, 3459, 3315, 3244, 3214, 3273, 3457, 3260, 3404, 3155,
+             3384, 3261, 3263, 3222, 3116, 3208, 3250, 3303, 3172, 3235, 3248, 3249, 3178,
+             3260, 3121, 3106, 3158, 3248, 3172, 3407, 3373, 3188, 3225, 3426, 3313, 3141,
+             3188, 3002, 3408, 3000, 3297, 3126, 3285, 3297, 3377, 3426, 3213, 3212, 3301,
+             3286, 3196, 3187, 3110, 3247, 3189, 3327, 3138, 3123, 3159, 3209, 3231, 3334,
+             3205, 3226, 3195, 3310, 3207, 3137)
+with open('/fred/oz012/Bruno/data/gal_starforming_starburst_zWarning_List.txt', 'w') as f:
     for i in range(len(df)):
         if i%10000==0: print(i)
+        if df['plate'].iloc[i] in tuple_104:
+            path = '/sdss/spectro/redux/104/spectra/lite/'
+        elif df['plate'].iloc[i] in tuple_103:
+            path = '/sdss/spectro/redux/103/spectra/lite/'        
+        elif df['plate'].iloc[i] > 3006 and df['plate'].iloc[i] != 8015 and df['plate'].iloc[i] != 8033:
+            path = '/sdss/spectro/redux/v5_10_0/spectra/lite/'
+        else:
+            path = '/sdss/spectro/redux/26/spectra/lite/'
         plate = str(df['plate'].iloc[i])
         mjd = str(df['mjd'].iloc[i])
         fiberid = str(df['fiberid'].iloc[i])
-        f.write(path +  plate + '/spec-' + plate + '-' + mjd + '-' + fiberid.zfill(4) + '.fits\n')
+        f.write(path +  plate.zfill(4) + '/spec-' + plate.zfill(4) + '-' 
+                + mjd + '-' + fiberid.zfill(4) + '.fits\n')

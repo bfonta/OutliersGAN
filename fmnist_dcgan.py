@@ -19,6 +19,7 @@ def main(argv=None):
                       opt_pars=(0.0001, 0.5, 0.999),
                       d_iters=1,
                       data_name='fashion_mnist',
+                      pics_save_names=('fashion_mnist_data_v2_','fashion_mnist_gen_v2_'),
                       checkpoint_dir=checkpoint_dir,
                       tensorboard_dir=tensorboard_dir)
             
@@ -26,10 +27,16 @@ def main(argv=None):
             dcgan.train(nepochs, drop_d=0., drop_g=0.)
 
         elif FLAGS.mode == 'generate':        
-            dcgan.generate(n=512, name='generate')
+            dcgan.generate(N=1, n_per_plot=5, name='generate')
 
         elif FLAGS.mode == 'predict':        
-            dcgan.generate(n_pred=1)
+            dcgan.predict(n_pred=1)
+
+        elif FLAGS.mode == 'save_features':        
+            dcgan.save_features(ninputs=50000, save_path='tensorflow', additional_data_name='mnist')
+
+        else:
+            raise ValueError('The specified mode is not supported.')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

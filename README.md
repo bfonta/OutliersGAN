@@ -28,5 +28,5 @@ The following models were trained and are currently saved in OzStar:
 
 ### Acknowledgements ###
 I thank my supervisor, Dr. Karl Glazebrook, for having given both the opportunity and funding to work in such an interesting project during 5 months.
-I further thank PhD candidate Colin Jacobs for being so nice and helpful during my stay.
+I further thank Dr. Colin Jacobs for being so nice and helpful during my stay.
 I finally thank Swinburne University of Technology, and particularly the Centre for Astrophysics and Supercomputing (Melbourne, Australia) for welcoming me extremely well.

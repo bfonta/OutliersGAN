@@ -1,7 +1,7 @@
 """
 Deredshifts all provided spectra and find a range which is compatible to all spectra.
 This range should ideally be equal or larger to the width of the generated spectra.
-Otherwise, I will ahve to add some zeros (or interpolated values).
+Otherwise, I will have to add some zeros (or interpolated values).
 """
 import gc
 import time

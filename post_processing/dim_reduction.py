@@ -1,9 +1,28 @@
 import h5py
 import numpy as np
+np.set_printoptions(threshold=np.nan)
 from matplotlib import pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import argparse
+
+"""
+Instructions
+
+This macro performs dimensionality reduction over the output os trained layers of a tensorflow model.
+
+Steps:
+1) Run a Tensorflow model (for the case of my project it was a GAN) with '--mode save_features'. See the macro 'spectra_dcgan.py' for a good example. The output of the layers will be stored according to the provided path.
+2) Use this macro with '--mode write' using '--read_path' followed by the name of the file just saved and using '--write_path' to specify the name of the output (dimensionality reduced) file.
+3) Reuse the former file to plot in different way. Use '--mode read' for this, specifying '--read_path'.
+
+Example:
+1) tf.hdf5 -> file with some layers outputs
+2) python dim_reduction.py --mode write --read_path tf.hdf5 --write_path red.hdf5
+3) python dim_reduction.py --mode read --read_path red.hdf5
+
+Depending on the method used (PCA, tSNE, ...) the third step may be much faster than the second one. A plot with the reduced data is shown after steps 2) and 3). Change the size of the data points in the plot() function if needed.
+"""
 
 def write():
     with h5py.File(FLAGS.read_path, 'r') as f:
@@ -14,6 +33,8 @@ def write():
         data2 = dset2[:,:]
 
     #standardisation
+    print("Number of zeros: {}.".format(data1.size-np.count_nonzero(data1)))
+    print("Number of zeros: {}.".format(data2.size-np.count_nonzero(data2)))
     data1 = (data1 - data1.mean(axis=0, keepdims=True)) / data1.std(axis=0, keepdims=True)
     data2 = (data2 - data2.mean(axis=0, keepdims=True)) / data2.std(axis=0, keepdims=True)
     print("Shapes:")
@@ -78,14 +99,16 @@ def parser(parser):
     return parser.parse_known_args()
 
 def plot(d1, d2):
-    plt.figure(figsize=(15,7))
-    plt.scatter(d1[:,0],d1[:,1],s=d1[:,2]*0.0002,color='olive',label='trained',alpha=.5)
-    plt.scatter(d2[:,0],d2[:,1],s=d2[:,2]*0.01,color='orangered',label='not trained',alpha=0.2)
+    rel_size = .005
+    plt.figure(figsize=(13,6))
+    plt.scatter(d1[:,0],d1[:,1],s=d1[:,2]*rel_size*10,color='olive',label='trained galaxy data',alpha=.5)
+    plt.scatter(d2[:,0],d2[:,1],s=d2[:,2]*rel_size,color='orangered',label='non-trained qso data',alpha=0.5)
     plt.legend()
-    plt.ylim([-20,20])
-    plt.xlim([-20,20])
-    plt.savefig('dim_reduction2.png')
+    plt.ylim([-30,30])
+    plt.xlim([-70,25])
+    plt.savefig('dim_reduction.png')
     plt.show()
+    plt.close()
 
 FLAGS, _ = parser(argparse.ArgumentParser())
 

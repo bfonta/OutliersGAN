@@ -70,7 +70,6 @@ def real_spectra_to_tfrecord(filename, table_path, nshards=1, write_fits=False):
     print("Number of invalid spectra:", err_counter, flush=True)
     print("Number of valid spectra:", nspectra-err_counter, flush=True)
 
-
 def gen_spectra_to_tfrecord(nspectra, spectra_size, filename, nshards=1, norm=False):
     """
     Saves spectra in the TFRecord format. 
@@ -78,7 +77,7 @@ def gen_spectra_to_tfrecord(nspectra, spectra_size, filename, nshards=1, norm=Fa
         Arguments:
         -> nspectra (int): number of spectra to save on disk
         -> nshards (int): number of shards for splitting the data
-        """
+    """
     nspectra_per_shard_float = float(nspectra)/float(nshards)
     if nspectra_per_shard_float%1==0:
         nspectra_per_shard = int(nspectra_per_shard_float)

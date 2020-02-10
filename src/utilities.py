@@ -87,12 +87,15 @@ def resampling_1d(x, y, bounds=(3750,7000), size=3500):
     try:
         f = interpolate.interp1d(x=x, y=y, kind='linear', assume_sorted=True)
         xnew = np.logspace(np.log10(bounds[0]), np.log10(bounds[1]), size)
+        xnew_TEST= np.linspace(bounds[0], bounds[1], size)
+        print('X VALS: ', xnew, xnew[1]-xnew[0], xnew[1000]-xnew[999])
+        print('X VALS: ', xnew_TEST, xnew_TEST[1]-xnew_TEST[0], xnew_TEST[1000]-xnew_TEST[999])
         ynew = f(xnew)
     except ValueError:
         print("X bounds: ", x[0], x[-1])
         print("Interpolated x: ", xnew)
         raise
-    return xnew, ynew
+    return xnew_TEST, ynew
 
 def is_invalid(arr):
     def _check_mostly_zeros(arr):

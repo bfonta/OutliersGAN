@@ -46,6 +46,9 @@ class _GAN(abc.ABC):
 
         Return:
         -> nothing
+
+        Notes:
+        - placeholders are usually denoted with the '_ph' substring. They must be fed with scalars or tensors.
         """
         self.sess = sess
         self.in_height = in_height
@@ -465,13 +468,19 @@ class _GAN(abc.ABC):
                                         feed_dict={gen_data_ph: noise(n,self.noise_dim),
                                                    dropout_prob_ph: 0., 
                                                    batch_size_ph: n})
-            self._plot(gen_samples, params, name+str(i), n=n)
+            self._plot(gen_samples, params, os.path.basename(name)+str(i), n=n)
             if write_fits:
+                """
                 init_l = np.log10(params[0][0][0]) #initial wavelength
                 delta_l = np.log10(params[0][0][1])-np.log10(params[0][0][0]) #wavelengthth bin width
                 assert np.isclose(delta_l, np.log10(params[0][0][1000])-np.log10(params[0][0][999]),
                                   atol=1e-6) #check bin uniformity
+                """
+                init_l = params[0][0][0] #initial wavelength
+                delta_l = params[0][0][1] - params[0][0][0] #wavelengthth bin width
+                assert np.isclose(delta_l, params[0][0][1000]-params[0][0][999], atol=1e-6) #check bin uniformity
                 gen_samples = gen_samples.reshape((n,gen_samples.shape[1]))
+                print(name+str(i), init_l, delta_l)
                 to_fits(gen_samples, name+str(i), params=(1., delta_l, init_l))
 
     def save_features(self, ninputs, save_path, 

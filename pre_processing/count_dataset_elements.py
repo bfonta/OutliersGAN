@@ -3,7 +3,7 @@ from src.data.tfrecords import read_spectra_data as read_data
 
 batch_size = 1
 files_path = '/fred/oz012/Bruno/data/spectra/qso_zWarning/'
-dataset = read_data(files_path+'spectra2_.tfrecord', 3500) #reads all shards: spectra2_0.tfrecord, ...
+dataset = read_data(files_path+'spectra.tfrecord', 3500) #reads all shards: spectra2_0.tfrecord, ...
 dataset = dataset.repeat(1).batch(batch_size)
 
 iterator = dataset.make_initializable_iterator()

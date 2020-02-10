@@ -7,16 +7,16 @@ import glob
 import numpy as np
 import pandas as pd
 
-df = pd.read_csv('/fred/oz012/Bruno/data/BOSS_GALCMASS.csv', skiprows=0)
+df = pd.read_csv('/fred/oz012/Bruno/data/gal_starforming_starburst_zWarning.csv', skiprows=0)
 df = df[['plate', 'mjd', 'fiberid', 'redshift', 'ra', 'dec', 'u', 'g', 'r', 'i', 'z']]
 
-spectra_path = '/fred/oz012/Bruno/data/spectra/boss/cmass/*/spec*.fits'
+spectra_path = '/fred/oz012/Bruno/data/spectra/gal_starforming_starburst_zWarning/*/spec*.fits'
 files = glob.glob(spectra_path)
 #0: plate; 1: mjd; 2: fiberid
 files_bits = [v.split('/')[-1][5:-5].split('-') for v in files]
 files_bits = list(map(np.int64,files_bits))
 
-with open('/fred/oz012/Bruno/data/BossGALCMASSListAllValues.csv', 'w', buffering=1) as f:
+with open('/fred/oz012/Bruno/data/gal_starforming_starburst_zWarning_ListAllValues.csv', 'w', buffering=1) as f:
     f.write('local_path,redshift,ra,dec,u,g,r,i,z,plate,mjd,fiberid\n')
 
     for i in range(len(df.axes[0])):
