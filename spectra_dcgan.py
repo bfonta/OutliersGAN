@@ -28,7 +28,8 @@ def main(argv=None):
             dataset_size=22791,  
             pics_save_names=("qso_zWarning_data_", "qso_zWarning_gen_"),
             files_path="/fred/oz012/Bruno/data/spectra/qso_zWarning/",
-            files_name="spectra2_linearlysampled_",
+            #files_name="spectra2_linearlysampled_", #used when Karl asked for linear sampling
+            files_name="spectra2_", 
             checkpoint_dir=checkpoint_dir,
             tensorboard_dir=tensorboard_dir,
         )

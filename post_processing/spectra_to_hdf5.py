@@ -30,7 +30,7 @@ def read_tfrecord(filename, spectrum_length, batch_size, data_folder=''):
     return dataset.repeat(1).batch(batch_size)
 
         
-with h5py.File('just_pca2.hdf5', 'w') as f:
+with h5py.File('/fred/oz012/Bruno/data/hdf5/plain_pca.hdf5', 'w') as f:
     path = '/fred/oz012/Bruno/data/spectra/'
     data_paths = (path + 'gal_starforming_starburst_zWarning/spectra.tfrecord', 
                   path + 'qso_zWarning/spectra.tfrecord')

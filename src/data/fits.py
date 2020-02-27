@@ -33,8 +33,7 @@ def to_fits(y, name, params=(None,None,None), x=None, labels=('wave','flux')):
 
         for i in range(len(y)):
             header = w.to_header()
-            #header['DC-FLAG'] = 1
-            header['DC-FLAG'] = 0
+            header['DC-FLAG'] = 1
             hdu = fits.PrimaryHDU(header=header)
             hdu.data = y[i]
             hdul = fits.HDUList([hdu])

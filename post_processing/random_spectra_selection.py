@@ -55,8 +55,8 @@ def main():
 
             lam_, flux_ = resampling_1d(x=lam_, y=flux_, bounds=bounds, size=tot_length)
             flux_ = normalize_flux(flux_)
-            #lam_ = np.log10(lam_)
-            lam_ = lam_
+            lam_ = np.log10(lam_)
+            #lam_ = lam_ #used when Karl asked for linear sampling
             init_l = lam_[0] #initial wavelength          
             delta_l = lam_[1]-lam_[0]
             assert np.isclose(delta_l, lam_[1000]-lam_[999], atol=1e-6) #check bin uniformity              

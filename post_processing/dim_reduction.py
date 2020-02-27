@@ -42,16 +42,23 @@ def write():
     print(data2.shape)
 
     #model fitting
-    model = PCA(n_components=3)
-    data1 = model.fit_transform(data1)
-    X1 = np.zeros((1,1))#TSNE(n_components=3).fit_transform(data1)
+    model_pca = PCA(n_components=3)
+    model_tsne = TSNE(n_components=3)
+    data1 = model_pca.fit_transform(data1)
+    if(FLAGS.with_tsne):
+        X1 = model_tsne.fit_transform(data1)
+    else:
+        X1 = np.zeros((1,1))
     #print(model.explained_variance_ratio_[:10])
     #print(model.explained_variance_ratio_.cumsum()[:10])
 
-    data2 = model.fit_transform(data2)
+    data2 = model_pca.fit_transform(data2)
     #print(model.explained_variance_ratio_[:10])
     #print(model.explained_variance_ratio_.cumsum()[:10])
-    X2 = np.zeros((1,1))#TSNE(n_components=3).fit_transform(data2)
+    if(FLAGS.with_tsne):
+        X2 = model_tsne.fit_transform(data2)
+    else:
+        X2 = np.zeros((1,1))
 
     with h5py.File(FLAGS.write_path, 'w') as f:
         g1 = f.create_group('PCA')
@@ -96,25 +103,28 @@ def parser(parser):
                         type=str,
                         default='file.hdf5',
                         help='Path of saved hdf5 file.')
+    parser.add_argument('--with_tsne',
+                        type=int,
+                        default=0,
+                        help='Runs very slow tSNE.'
+    )
     return parser.parse_known_args()
 
-def plot(d1, d2):
+def plot(name, d1, d2, xlim, ylim):
     rel_size = .005
     plt.figure(figsize=(13,6))
     plt.scatter(d1[:,0],d1[:,1],s=d1[:,2]*rel_size*10,color='olive',label='trained galaxy data',alpha=.5)
     plt.scatter(d2[:,0],d2[:,1],s=d2[:,2]*rel_size,color='orangered',label='non-trained qso data',alpha=0.5)
     plt.legend()
-    plt.ylim([-30,30])
-    plt.xlim([-70,25])
-    plt.savefig('dim_reduction.png')
-    plt.show()
+    plt.xlim(xlim)
+    plt.ylim(ylim)
+    plt.savefig(name)
     plt.close()
 
 FLAGS, _ = parser(argparse.ArgumentParser())
 
 if FLAGS.mode == 'write':
     p1, p2, t2, t1 = write()
-    plot(p1, p2)
 elif FLAGS.mode == 'read':
     p1, p2, t1, t2 = read()
     """
@@ -123,6 +133,9 @@ elif FLAGS.mode == 'read':
     p1 = TSNE(n_components=3).fit_transform(p1)
     p2 = TSNE(n_components=3).fit_transform(p2)
     """
-    plot(p1, p2)    
 else:
     raise ValueError('The parsed argument does not exist.')
+
+plot('pca.png', p1, p2, [-100,100], [-100,100])
+if(FLAGS.with_tsne):
+    plot('tsne.png', t1, t2, [-100,20], [-25,50])    

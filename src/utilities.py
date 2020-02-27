@@ -87,7 +87,7 @@ def resampling_1d(x, y, bounds=(3750,7000), size=3500):
     try:
         f = interpolate.interp1d(x=x, y=y, kind='linear', assume_sorted=True)
         xnew = np.logspace(np.log10(bounds[0]), np.log10(bounds[1]), size)
-        xnew_TEST= np.linspace(bounds[0], bounds[1], size)
+        xnew_TEST= np.linspace(bounds[0], bounds[1], size) #used when Karl asked for linear sampling
         print('X VALS: ', xnew, xnew[1]-xnew[0], xnew[1000]-xnew[999])
         print('X VALS: ', xnew_TEST, xnew_TEST[1]-xnew_TEST[0], xnew_TEST[1000]-xnew_TEST[999])
         ynew = f(xnew)
@@ -95,7 +95,7 @@ def resampling_1d(x, y, bounds=(3750,7000), size=3500):
         print("X bounds: ", x[0], x[-1])
         print("Interpolated x: ", xnew)
         raise
-    return xnew_TEST, ynew
+    return xnew, ynew
 
 def is_invalid(arr):
     def _check_mostly_zeros(arr):
@@ -114,7 +114,7 @@ def is_invalid(arr):
     return _check_mostly_zeros(arr) or _check_infinite(arr)
 
 class PlotGenSamples():
-    def __init__(self, ncols=6, nrows=6, figsize=(16,12)):
+    def __init__(self, ncols=6, nrows=6, figsize=(10,5)):
         self.nrows = nrows
         self.ncols = ncols
         self.figsize = figsize
@@ -135,7 +135,7 @@ class PlotGenSamples():
                     self.ax[irow, icol].plot(lambdas[i], samples[i])
                 i = i + 1
         plt.xlabel('Wavelength [A]')
-        plt.savefig('/fred/oz012/Bruno/figs/{}.png'.format(name))
+        plt.savefig(name)
         plt.close()
 
     def plot_mnist(self, samples, name):
@@ -149,7 +149,7 @@ class PlotGenSamples():
             ax.set_yticklabels([])
             ax.set_aspect('equal')
             plt.imshow(sample.reshape(28,28), cmap='Greys_r')
-        plt.savefig('/fred/oz012/Bruno/figs/{}.png'.format(name))
+        plt.savefig('/fred/oz012/Bruno/figs/{}.png')
         plt.close()
 
     def plot_cifar10(self, samples, name):

@@ -18,6 +18,18 @@ def add_args(parser):
         help='Input file name.'
     )
     parser.add_argument(
+        '--real_fits_name',
+        type=str,
+        default='real.fits',
+        help='Input real FITS file name.'
+    )
+    parser.add_argument(
+        '--fake_fits_name',
+        type=str,
+        default='fake.fits',
+        help='Input fake FITS file name.'
+    )
+    parser.add_argument(
         '--noGPU',
         type=int,
         default=0,
