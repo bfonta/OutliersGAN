@@ -29,8 +29,8 @@ def real_spectra_to_tfrecord(filename, table_path, nshards=1, write_fits=False):
     """
     df = pd.read_csv(table_path)
     nspectra = len(df.axes[0])
-    #bounds = 3750, 7000 #used for all spectra except qso
-    bounds = 1800, 4150
+    bounds = 3750, 7000 #used for all spectra except qso
+    #bounds = 1800, 4150
     tot_length = 3500
     shard_width = int(nspectra/nshards)+1
     err_counter = 0
