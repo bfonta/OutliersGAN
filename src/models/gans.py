@@ -464,7 +464,8 @@ class _GAN(abc.ABC):
         saver.restore(self.sess, latest_checkpoint)
 
         for i in range(N):
-            os.makedirs( os.path.join(os.path.dirname(name), 'batch'+str(i)) )
+            if not os.path.isdir( os.path.join(os.path.dirname(name), 'batch'+str(i)) ):
+                os.makedirs( os.path.join(os.path.dirname(name), 'batch'+str(i)) )
             gen_samples = self.sess.run(G_output, 
                                         feed_dict={gen_data_ph: noise(n,self.noise_dim),
                                                    dropout_prob_ph: 0., 

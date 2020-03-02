@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import random
 import glob
@@ -34,12 +35,13 @@ def main():
     df = pd.read_csv(table_path)
     g = glob.glob(folder_path + '/*/*.fits')
     random.seed()
-    N = 10
-    r = [np.random.randint(0, len(g)-1) for _ in range(N)]
+    n = 10
+    N = 15
+    r = [np.random.randint(0, len(g)-1) for _ in range(n*N)]
 
-    yescount, nocount, i = 0, 0, 0
-    while yescount < N:
-        print(yescount, nocount, i)
+    yescount, nocount, i, ibatch = 0, 0, 0, -1
+    while yescount < n*N:
+        print(yescount, nocount, i, ibatch)
         ri = r[i]
         i += 1
         rshift_ = float(df.loc[df['local_path'] == g[ri]]['redshift'].astype(np.float64))
@@ -53,6 +55,11 @@ def main():
                 nocount += 1
                 continue
 
+            if yescount%n==0:
+                ibatch += 1
+                file_counter = -1
+            file_counter += 1
+                
             lam_, flux_ = resampling_1d(x=lam_, y=flux_, bounds=bounds, size=tot_length)
             flux_ = normalize_flux(flux_)
             lam_ = np.log10(lam_)
@@ -62,7 +69,10 @@ def main():
             assert np.isclose(delta_l, lam_[1000]-lam_[999], atol=1e-6) #check bin uniformity              
             print(init_l, delta_l)
             print("ToFITS", ri, len(r))
-            to_fits(y=[flux_], name=FLAGS.fname+str(yescount), params=(1., delta_l, init_l))
+            if not os.path.isdir( os.path.join(os.path.dirname(FLAGS.fname), 'batch'+str(ibatch)) ):
+                os.makedirs( os.path.join(os.path.dirname(FLAGS.fname), 'batch'+str(ibatch)) )
+            path = os.path.join( os.path.dirname(FLAGS.fname), 'batch'+str(ibatch), os.path.basename(FLAGS.fname) + '_' + str(file_counter) )
+            to_fits(y=[flux_], name=path, params=(1., delta_l, init_l))
             yescount += 1
             """
             from src.utilities import PlotGenSamples
