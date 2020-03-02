@@ -38,7 +38,7 @@ def main(argv=None):
             dcgan.train(nepochs, drop_d=0.0, drop_g=0.0, flip_prob=0.15, restore=False)
 
         elif FLAGS.mode == "generate":
-            dcgan.generate(N=1, n=30, name=FLAGS.fname, write_fits=True)
+            dcgan.generate(N=15, n=10, name=FLAGS.fname, write_fits=True)
 
         elif FLAGS.mode == "predict":
             dcgan.predict(n_pred=514)

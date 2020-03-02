@@ -464,6 +464,7 @@ class _GAN(abc.ABC):
         saver.restore(self.sess, latest_checkpoint)
 
         for i in range(N):
+            os.makedirs( os.path.join(os.path.dirname(name), 'batch'+str(i)) )
             gen_samples = self.sess.run(G_output, 
                                         feed_dict={gen_data_ph: noise(n,self.noise_dim),
                                                    dropout_prob_ph: 0., 
@@ -481,7 +482,8 @@ class _GAN(abc.ABC):
                 """
                 gen_samples = gen_samples.reshape((n,gen_samples.shape[1]))
                 print(name+str(i), init_l, delta_l)
-                to_fits(gen_samples, name+str(i), params=(1., delta_l, init_l))
+                path = os.path.join( os.path.dirname(name), 'batch'+str(i), os.path.basename(name) )
+                to_fits(gen_samples, path, params=(1., delta_l, init_l))
 
     def save_features(self, ninputs, save_path, 
                       additional_files_name=None, additional_data_path=None, additional_ninputs=None):

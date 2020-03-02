@@ -34,7 +34,7 @@ def main():
     df = pd.read_csv(table_path)
     g = glob.glob(folder_path + '/*/*.fits')
     random.seed()
-    N = 30
+    N = 10
     r = [np.random.randint(0, len(g)-1) for _ in range(N)]
 
     yescount, nocount, i = 0, 0, 0
