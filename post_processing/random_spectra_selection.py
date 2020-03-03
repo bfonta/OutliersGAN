@@ -16,14 +16,14 @@ def normalize_flux(f):
     std = np.sqrt(np.mean(diff**2))
     return diff / std / 30
             
-def main():
-    if FLAGS.fname == "":
+def main(fname, data_type, N=15, n=10):
+    if fname == "":
         raise ValueError('Please specify a valid name for the FITS files, including the path.')
-    if FLAGS.data_type == 'gal':
+    if data_type == 'gal':
         folder_path = '/fred/oz012/Bruno/data/spectra/gal_starforming_starburst_zWarning'
         table_path = '/fred/oz012/Bruno/data/gal_starforming_starburst_zWarning_ListAllValues.csv'
         bounds = (3750, 7000)
-    elif FLAGS.data_type == 'qso':
+    elif data_type == 'qso':
         folder_path = '/fred/oz012/Bruno/data/spectra/qso_zWarning'
         table_path = '/fred/oz012/Bruno/data/qso_zWarning_ListAllValues.csv'
         bounds = (1800, 4150)
@@ -35,8 +35,6 @@ def main():
     df = pd.read_csv(table_path)
     g = glob.glob(folder_path + '/*/*.fits')
     random.seed()
-    n = 10
-    N = 15
     r = [np.random.randint(0, len(g)-1) for _ in range(n*N)]
 
     yescount, nocount, i, ibatch = 0, 0, 0, -1
@@ -69,9 +67,10 @@ def main():
             assert np.isclose(delta_l, lam_[1000]-lam_[999], atol=1e-6) #check bin uniformity              
             print(init_l, delta_l)
             print("ToFITS", ri, len(r))
-            if not os.path.isdir( os.path.join(os.path.dirname(FLAGS.fname), 'batch'+str(ibatch)) ):
-                os.makedirs( os.path.join(os.path.dirname(FLAGS.fname), 'batch'+str(ibatch)) )
-            path = os.path.join( os.path.dirname(FLAGS.fname), 'batch'+str(ibatch), os.path.basename(FLAGS.fname) + '_' + str(file_counter) )
+            if not os.path.isdir( os.path.join(os.path.dirname(fname), 'batch'+str(ibatch)) ):
+                os.makedirs( os.path.join(os.path.dirname(fname), 'batch'+str(ibatch)) )
+            path = os.path.join( os.path.dirname(fname), 'batch'+str(ibatch), os.path.basename(fname) + '_' + str(file_counter) )
+            print("PRINT! ", path, fname)
             to_fits(y=[flux_], name=path, params=(1., delta_l, init_l))
             yescount += 1
             """
@@ -83,4 +82,4 @@ def main():
 if __name__ == "__main__":                  
     parser = argparse.ArgumentParser()
     FLAGS, _ = argparser.add_args(parser)
-    main()
+    main(FLAGS.fname, FLAGS.data_type)
