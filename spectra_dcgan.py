@@ -78,10 +78,10 @@ def set_param_dicts():
 
     idx = 999 #used for tests
     #assert (filename not in [v for k,v in d_fn.items()]), 'Please do not repeat filenames. This could lead to overwrites.'
-    d_ds[idx] = d_ds[73]
+    d_ds[idx] = d_ds[74]
     d_pn[idx] = ('TEST_data_', 'TEST_gen_')
-    d_fn[idx] = d_fn[73]
-    d_fp[idx] = d_fp[73] 
+    d_fn[idx] = d_fn[74]
+    d_fp[idx] = d_fp[74] 
 
     return d_ds, d_pn, d_fn, d_fp
     
@@ -91,7 +91,7 @@ if __name__ == '__main__':
 
     dataset_size_d, pics_save_names_d, files_name_d, files_path_d = set_param_dicts()
 
-    nepochs = 10
+    nepochs = 1000
     checkpoint_dir = '/fred/oz012/Bruno/checkpoints/' + str(FLAGS.checkpoint) + '/'
     tensorboard_dir = '/fred/oz012/Bruno/tensorboard/' + str(FLAGS.checkpoint) + '/'
     
