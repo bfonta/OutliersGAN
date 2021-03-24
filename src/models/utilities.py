@@ -4,6 +4,13 @@ import tensorflow as tf
 def noise(m,n):
     return np.random.normal(loc=0.0, scale=1., size=[m,n])
 
+def linear_regression_layer(x, name):
+    w = tf.Variable([1.0])
+    b = tf.Variable([0.0])
+    nb = name + '/bias'
+    nw = name + '/kernel'
+    return tf.math.add( tf.math.multiply(x, w, name=nb), b, name=nw)
+
 def minibatch_discrimination(inputs, num_kernels=5, kernel_dim=3, name=''):
     with tf.variable_scope('minibatch_discrimination'):
         T = tf.get_variable('T', shape=[inputs.get_shape()[1], num_kernels*kernel_dim], 

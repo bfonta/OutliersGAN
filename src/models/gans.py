@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow as tf
 from src.utilities import log_tf_files, tboard_concat
 from src.utilities import PlotGenSamples, plot_predictions
-from src.models.utilities import minibatch_discrimination, noise
+from src.models.utilities import minibatch_discrimination, noise, linear_regression_layer
 from src.data.tfrecords import read_spectra_data as read_data
 from src.data.fits import to_fits
 
@@ -167,10 +167,12 @@ class _GAN(abc.ABC):
         if self.data_name == 'mnist' or self.data_name == 'fashion_mnist':
             return np.expand_dims(inputs, axis=3)
         elif self.data_name == 'spectra':
+            """
             mean = np.mean(inputs, axis=1, keepdims=True)
             diff = inputs - mean
             std = np.sqrt(np.mean(diff**2, axis=1, keepdims=True))
             inputs = diff / std / 30
+            """
             return np.expand_dims(np.expand_dims(inputs, axis=2), axis=3)
         return inputs
 
@@ -222,36 +224,11 @@ class _GAN(abc.ABC):
             self.G_loss = tf.reduce_mean(cross_entropy(logits=self.D_fake_logits,
                                                        labels=self.real_labels_ph)) 
 
-        #summaries visualized in Tensorboard
-        with tf.variable_scope('D_statistics'):
-            tf.summary.scalar('loss_d', self.D_loss)
-            log_tf_files(layers_names=self.d_layers_names, loss=self.D_loss, scope='D')
-
-        with tf.variable_scope('G_statistics'):
-            tf.summary.scalar('loss_g', self.G_loss)    
-            log_tf_files(layers_names=self.g_layers_names, loss=self.G_loss, scope='G')
-
-        #how many pictures to stack on each side
-        if self.data_name in self.image_datasets:
-            self.side = 9 
-        else:
-            self.side = 1
-
-        self.real_pics_ph = tf.placeholder(tf.float32, 
-                    shape=[1,self.in_height*self.side,self.in_width*self.side,self.nchannels],
-                    name='real_pics_ph')
-        tf.summary.image('real_pic', self.real_pics_ph, max_outputs=1)
-        self.gen_pics_ph = tf.placeholder(tf.float32, 
-                            shape=[1,self.in_height*self.side,self.in_width*self.side,self.nchannels], 
-                            name='gen_pics_ph')
-        tf.summary.image('gen_pic', self.gen_pics_ph, max_outputs=1)
-        #####################################
-
         D_optimizer = tf.train.AdamOptimizer(learning_rate=lr, beta1=beta1, beta2=beta2)
         G_optimizer = tf.train.AdamOptimizer(learning_rate=lr, beta1=beta1, beta2=beta2)
         D_trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'D')
         G_trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'G')
-        
+
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
             self.D_train_op = D_optimizer.minimize(self.D_loss, var_list=D_trainable_vars, 
@@ -259,6 +236,18 @@ class _GAN(abc.ABC):
             self.G_train_op = G_optimizer.minimize(self.G_loss, var_list=G_trainable_vars, 
                                                    name='G_train_op')
 
+    def define_tf_summary(self):
+        """Summarizes variables for Tensorboard"""
+        with tf.variable_scope('Discriminator'):
+            tf.summary.scalar('loss_d', self.D_loss)
+            log_tf_files(layers_names=self.d_layers_names, loss=self.D_loss, scope='D')
+
+        with tf.variable_scope('Generator'):
+            tf.summary.scalar('loss_g', self.G_loss)
+            log_tf_files(layers_names=self.g_layers_names, loss=self.G_loss, scope='G')
+        
+        return tf.summary.merge_all()
+                
     def train(self, nepochs, drop_d=0.7, drop_g=0.3, flip_prob=0.05, restore=False):
         """
         Performs the training of the GAN.
@@ -272,8 +261,13 @@ class _GAN(abc.ABC):
         """
         self._build_model(self._generator, self._discriminator, 
                           lr=self.opt_pars[0], beta1=self.opt_pars[1], beta2=self.opt_pars[2])
-
-        summary = tf.summary.merge_all()
+        """
+        for x in [n.name for n in tf.get_default_graph().as_graph_def().node]:
+            if 'linear_regression' in x:
+                print(x)
+        quit()
+        """
+        summary = self.define_tf_summary()
         train_writer = tf.summary.FileWriter(self.tensorboard_dir, self.sess.graph)
 
         iterator = self.dataset.make_initializable_iterator()
@@ -348,22 +342,40 @@ class _GAN(abc.ABC):
                                                    self.batch_size_ph: self.batch_size,
                                                    self.real_labels_ph: real, self.fake_labels_ph: fake})
 
-            tboard_sample = np.expand_dims(tboard_concat(sample, self.side),0)
-            tboard_inputs = np.expand_dims(tboard_concat(inputs, self.side),0)
 
+            if self.data_name in self.image_datasets:
+                self.side = 9
+                scope_name = 'Something'
+            else:
+                self.side = 1
+                scope_name = 'Spectra'
+
+            def create_image_for_summary(ydata):
+                fig = plt.figure()
+                plt.plot(xdata, ydata[0,:,0,0])
+                buf = io.BytesIO()
+                plt.savefig(buf, format='png')
+                plt.close(fig)
+                buf.seek(0)
+                image = tf.image.decode_png(buf.getvalue(), channels=4)
+                image = tf.expand_dims(image, 0)
+                return image
+        
+            with tf.variable_scope(scope_name):
+                #im_fake = self._plot(sample, params, self.pics_save_names[1]+str(epoch), n=5)
+                p = PlotGenSamples(nrows=5, ncols=1, figsize=(20,15))
+                im_summ_real = tf.summary.image('Real', p.plot_spectra(inputs[:,:,0,0], np.arange(3500)))
+                im_summ_fake = tf.summary.image('Fake', p.plot_spectra(sample[:,:,0,0], np.arange(3500)))
+                summary_images = tf.summary.merge([im_summ_real, im_summ_fake])
+                
             summ = self.sess.run(summary, 
                                  feed_dict={self.data_ph: inputs, self.gen_data_ph: noise_G,
                                             self.dropout_prob_ph: dropout_prob_G,
                                             self.batch_size_ph: len(inputs),
-                                            self.real_labels_ph: real, self.fake_labels_ph: fake,
-                                            self.real_pics_ph: tboard_inputs,
-                                            self.gen_pics_ph: tboard_sample})
-        
-            train_writer.add_summary(summ, epoch*self.nbatches+(batch+1))            
-            
-            #print generated samples
-            self._plot(inputs, params, self.pics_save_names[0]+str(epoch), n=5)
-            self._plot(sample, params, self.pics_save_names[1]+str(epoch), n=5)
+                                            self.real_labels_ph: real, self.fake_labels_ph: fake})
+            train_writer.add_summary(summ, epoch*self.nbatches+(batch+1))
+            summ_images = self.sess.run(summary_images, feed_dict={self.data_ph: inputs})
+            train_writer.add_summary(summ_images, epoch*self.nbatches+(batch+1))
 
     def _plot(self, data, params_data, name, n=5, mode='normal'):
         if mode=='normal':
@@ -375,7 +387,7 @@ class _GAN(abc.ABC):
                 p.plot_cifar10(data[:36], name)
             elif self.data_name == 'spectra':
                 p = PlotGenSamples(nrows=n, ncols=1)
-                p.plot_spectra(data[:n], params_data[0][:n], name)
+                p.plot_spectra(data[:n], params_data)
             else: 
                 raise Exception('What should I plot?')
         elif mode=='predictions':
@@ -732,8 +744,11 @@ class DCGAN(_GAN):
                                              name=self.g_layers_names[-1])
             if self.mode != 'wgan-gp':
                 net = tf.layers.batch_normalization(net, training=self.batch_norm_ph)
-            net = tf.nn.tanh(net)
-
+            #net = tf.nn.tanh(net)
+            self.g_layers_names += ('linear_regression',)
+            net = tf.layers.dense(net, 1, name=self.g_layers_names[-1])
+            #net = linear_regression_layer(net, name=self.g_layers_names[-1])
+            
         return tf.reshape(net, shape=[-1, self.in_height, self.in_width, self.nchannels], 
                           name='output')        
 

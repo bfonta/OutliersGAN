@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 import matplotlib.gridspec as gridspec
 import os, sys
 import glob
+import io
 import numpy as np
 import tensorflow as tf
 from scipy import interpolate
@@ -45,14 +46,30 @@ def plot_predictions(pred, name):
 
 def log_tf_files(layers_names, loss, scope):
     gr = tf.get_default_graph()
-    num_layers = len(layers_names)
-    for i in range(num_layers):
-        weight = gr.get_tensor_by_name(scope+'/'+layers_names[i]+'/kernel:0')
-        grad = tf.gradients(loss, weight)[0]
-        mean = tf.reduce_mean(tf.abs(grad))
-        tf.summary.scalar(scope+'_mean{}'.format(i + 1), mean)
-        tf.summary.histogram(scope+'_gradients{}'.format(i + 1), grad)
-        tf.summary.histogram(scope+'_weights{}'.format(i + 1), weight)
+    for x in layers_names:
+        name = '{}/{}/bias:0'.format(scope,x)
+        try:
+            bias = gr.get_tensor_by_name(name)
+        except:
+            print('Tensor {} was not found.'.format(name))
+        bmean = tf.reduce_mean(bias, keepdims=True)
+        bstd = tf.sqrt(tf.reduce_mean((bmean-bias)**2))
+        tf.summary.scalar('{}_bias_mean_{}'.format(scope,x), tf.squeeze(bmean))
+        tf.summary.scalar('{}_bias_std_{}'.format(scope,x), bstd)
+        tf.summary.histogram('{}_bias_{}'.format(scope,x), bias)
+
+        name = '{}/{}/kernel:0'.format(scope,x)
+        try:
+            weight = gr.get_tensor_by_name(name)
+        except:
+            print('Tensor {} was not found.'.format(name))
+        wgrad = tf.gradients(loss, weight)[0]
+        wmean = tf.reduce_mean(tf.abs(wgrad))
+        tf.summary.scalar('{}_weight_mean_{}'.format(scope,x), wmean)
+        tf.summary.histogram('{}_weight_gradients_{}'.format(scope,x), wgrad)
+        tf.summary.histogram('{}_weights_{}'.format(scope,x), weight)
+
+
 
 def reject_outliers(data, m=5):
     d = np.abs(data - np.median(data))
@@ -119,7 +136,7 @@ class PlotGenSamples():
         self.ncols = ncols
         self.figsize = figsize
 
-    def plot_spectra(self, samples, lambdas, name='', fix_size=True):
+    def plot_spectra(self, samples, lambdas):
         self.fig, self.ax = plt.subplots(nrows=self.nrows, ncols=self.ncols, 
                                          squeeze=False, sharex=True, 
                                          figsize=self.figsize)
@@ -129,14 +146,17 @@ class PlotGenSamples():
             for icol in range(self.ncols):
                 self.ax[irow, icol].grid()
                 self.ax[irow, icol].set_ylabel('Flux')
-                if fix_size:
-                    self.ax[irow, icol].plot(lambdas[i].reshape(3500), samples[i].reshape(3500))
-                else:
-                    self.ax[irow, icol].plot(lambdas[i], samples[i])
+                self.ax[irow, icol].plot(lambdas, samples[i])
                 i = i + 1
         plt.xlabel('Wavelength [A]')
-        plt.savefig(name)
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=200)
         plt.close()
+        buf.seek(0)
+        image = tf.image.decode_png(buf.getvalue(), channels=4)
+        image = tf.expand_dims(image, 0)
+        return image
 
     def plot_mnist(self, samples, name):
         self.fig = plt.figure(figsize=(6,6))
