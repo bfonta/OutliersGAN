@@ -76,7 +76,7 @@ def set_param_dicts():
     d_fn[idx] = 'spectra2' #'spectra2_linearlysampled_': used when Karl asked for linear sampling
     d_fp[idx] = os.path.join(main_path, 'qso_zWarning/')
 
-    idx = 999 #used for tests
+    idx = 998 #used for tests
     #assert (filename not in [v for k,v in d_fn.items()]), 'Please do not repeat filenames. This could lead to overwrites.'
     d_ds[idx] = d_ds[74]
     d_pn[idx] = ('TEST_data_', 'TEST_gen_')

@@ -167,14 +167,13 @@ class _GAN(abc.ABC):
         if self.data_name == 'mnist' or self.data_name == 'fashion_mnist':
             return np.expand_dims(inputs, axis=3)
         elif self.data_name == 'spectra':
-            """
             mean = np.mean(inputs, axis=1, keepdims=True)
             diff = inputs - mean
             std = np.sqrt(np.mean(diff**2, axis=1, keepdims=True))
-            inputs = diff / std / 30
-            """
-            return np.expand_dims(np.expand_dims(inputs, axis=2), axis=3)
-        return inputs
+            inputs_norm = diff / std / 30
+            inputs_norm = np.expand_dims(np.expand_dims(inputs_norm, axis=2), axis=3)
+            inputs = np.expand_dims(np.expand_dims(inputs, axis=2), axis=3)
+            return inputs_norm, inputs
 
     def _build_model(self, generator, discriminator, lr=0.0002, beta1=0.5, beta2=0.999):
         self.batch_size_ph = tf.placeholder(tf.int32, shape=[], name='batch_size_ph') 
@@ -191,7 +190,10 @@ class _GAN(abc.ABC):
         with tf.variable_scope('D') as scope:
             self.data_ph = tf.placeholder(tf.float32, 
                                           shape=[None, self.in_height, self.in_width, self.nchannels], 
-                                          name='data_ph')   
+                                          name='data_ph')
+            self.data_norm_ph = tf.placeholder(tf.float32, 
+                                               shape=[None, self.in_height, self.in_width, self.nchannels], 
+                                               name='data_norm_ph')
             self.D_real_logits, self.D_real = discriminator(self.data_ph, 
                                                             drop=self.dropout_prob_ph)
 
@@ -203,7 +205,7 @@ class _GAN(abc.ABC):
         if self.mode=='wgan-gp':
             epsilon = tf.random_uniform(shape=[self.batch_size_ph,1,1,1], 
                                         minval=0., maxval=1., name='epsilon')
-            interpolate = self.G_sample + epsilon * ( self.data_ph - self.G_sample )
+            interpolate = self.G_sample + epsilon * ( self.data_norm_ph - self.G_sample )
 
             with tf.variable_scope('D', reuse=True):
                 gradients = tf.gradients(discriminator(interpolate, drop=self.dropout_prob_ph),
@@ -291,7 +293,10 @@ class _GAN(abc.ABC):
 
             for batch in range(self.nbatches):
                 inputs, *params = self.sess.run(next_element)
-                inputs = self._pre_process(inputs, params)
+                if self.data_name == 'spectra':
+                    inputs_norm, inputs = self._pre_process(inputs, params)
+                else:
+                    inputs = self._pre_process(inputs, params)
 
                 for _ in range(self.d_iters):
                     #label flipping and smoothing
@@ -307,7 +312,8 @@ class _GAN(abc.ABC):
                     noise_D = noise(len(inputs), self.noise_dim)
                     _, D_loss_c, D_real_c, D_fake_c = self.sess.run([self.D_train_op, self.D_loss,
                                                                      self.D_real, self.D_fake],
-                                        feed_dict={self.data_ph: inputs, self.gen_data_ph: noise_D,
+                                        feed_dict={self.data_ph: inputs, self.data_norm_ph: inputs_norm,
+                                                   self.gen_data_ph: noise_D,
                                                    self.dropout_prob_ph: dropout_prob_D,
                                                    self.batch_size_ph: len(inputs),
                                                    self.real_labels_ph: real, self.fake_labels_ph: fake})
@@ -330,7 +336,8 @@ class _GAN(abc.ABC):
                 """
                 #train generator
                 _, G_loss_c  = self.sess.run([self.G_train_op, self.G_loss],
-                                      feed_dict={self.data_ph: inputs, self.gen_data_ph: noise_G,
+                                      feed_dict={self.data_norm_ph: inputs_norm,
+                                                 self.gen_data_ph: noise_G,
                                                  self.dropout_prob_ph: dropout_prob_G,
                                                  self.batch_size_ph: len(inputs),
                                                  self.real_labels_ph: real, self.fake_labels_ph: fake})
@@ -424,8 +431,11 @@ class _GAN(abc.ABC):
         ps = [] #used for plotting
         for b in range(self.nbatches):
             inputs, *params = self.sess.run(next_element)
-            inputs = self._pre_process(inputs, params)
-
+            if self.data_name == 'spectra':
+                inputs_norm, inputs = self._pre_process(inputs, params)
+            else:
+                inputs = self._pre_process(inputs, params)
+                
             #Makes sure that the number of predictions is the one the user wants
             if (b+1)*self.batch_size > n_pred:
                 inputs = inputs[:n_pred - b*self.batch_size]
