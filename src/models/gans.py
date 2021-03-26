@@ -167,10 +167,12 @@ class _GAN(abc.ABC):
         if self.data_name == 'mnist' or self.data_name == 'fashion_mnist':
             return np.expand_dims(inputs, axis=3)
         elif self.data_name == 'spectra':
+            """
             mean = np.mean(inputs, axis=1, keepdims=True)
             diff = inputs - mean
             std = np.sqrt(np.mean(diff**2, axis=1, keepdims=True))
             inputs = diff / std / 30
+            """
             return np.expand_dims(np.expand_dims(inputs, axis=2), axis=3)
         return inputs
 
@@ -362,8 +364,9 @@ class _GAN(abc.ABC):
             train_writer.add_summary(summ, epoch*self.nbatches+(batch+1))            
             
             #print generated samples
-            self._plot(inputs, params, self.pics_save_names[0]+str(epoch), n=5)
-            self._plot(sample, params, self.pics_save_names[1]+str(epoch), n=5)
+            if epoch%5==0:
+                self._plot(inputs, params, self.pics_save_names[0]+str(epoch), n=5)
+                self._plot(sample, params, self.pics_save_names[1]+str(epoch), n=5)
 
     def _plot(self, data, params_data, name, n=5, mode='normal'):
         if mode=='normal':
@@ -732,7 +735,7 @@ class DCGAN(_GAN):
                                              name=self.g_layers_names[-1])
             if self.mode != 'wgan-gp':
                 net = tf.layers.batch_normalization(net, training=self.batch_norm_ph)
-            net = tf.nn.tanh(net)
+            #net = tf.nn.tanh(net)
 
         return tf.reshape(net, shape=[-1, self.in_height, self.in_width, self.nchannels], 
                           name='output')        

@@ -12,12 +12,12 @@ cifar10_checkpoint=3
 #name='cifar10'
 #sbatch -J cifar10 --output outputs/cifar10.out --ntasks=1 --cpus-per-task=1 --ntasks-per-node=1 --time=100:00:00 --mem-per-cpu=16GB --gres=gpu:1 job_scripts/gpu_cifar10.sh "${cifar10_checkpoint}"
 #
-#spectra_checkpoint=74
-#name='qso2_zWarning'
-#sbatch -J "${name}" --output outputs/"${name}".out --ntasks=1 --cpus-per-task=1 --ntasks-per-node=1 --time=7-00:00:00 --mem-per-cpu=16GB --gres=gpu:2 job_scripts/gpu_spectra.sh "${spectra_checkpoint}"
+spectra_checkpoint=900
+name='qso2NoTanh'
+sbatch -J "${name}" --output outputs/"${name}".out --ntasks=1 --cpus-per-task=1 --ntasks-per-node=1 --time=0-10:00:00 --mem-per-cpu=8GB --gres=gpu:1 job_scripts/gpu_spectra.sh "${spectra_checkpoint}"
 #
-name='writer'
-sbatch -J "${name}" --output outputs/"${name}".out --ntasks=1 --cpus-per-task=1 --ntasks-per-node=1 --time=40:00:00 --mem-per-cpu=1GB --gres=gpu:1 job_scripts/writer.sh
+#name='writer'
+#sbatch -J "${name}" --output outputs/"${name}".out --ntasks=1 --cpus-per-task=1 --ntasks-per-node=1 --time=40:00:00 --mem-per-cpu=1GB --gres=gpu:1 job_scripts/writer.sh
 #
 #
 #######Checkpoints#############
