@@ -44,7 +44,7 @@ def plot_predictions(pred, name):
     plt.savefig('/fred/oz012/Bruno/figs/{}.png'.format(name))
     plt.close()
 
-def log_tf_files(layers_names, loss, scope):
+def log_tf_files(layers_names, loss, scope, debug):
     gr = tf.get_default_graph()
     for x in layers_names:
         name = '{}/{}/bias:0'.format(scope,x)
@@ -52,6 +52,7 @@ def log_tf_files(layers_names, loss, scope):
             bias = gr.get_tensor_by_name(name)
         except:
             print('Tensor {} was not found.'.format(name))
+            continue
         bmean = tf.reduce_mean(bias, keepdims=True)
         bstd = tf.sqrt(tf.reduce_mean((bmean-bias)**2))
         tf.summary.scalar('{}_bias_mean_{}'.format(scope,x), tf.squeeze(bmean))
@@ -63,13 +64,19 @@ def log_tf_files(layers_names, loss, scope):
             weight = gr.get_tensor_by_name(name)
         except:
             print('Tensor {} was not found.'.format(name))
+            continue
         wgrad = tf.gradients(loss, weight)[0]
+        if wgrad is None:
+            print('The gradient of the loss relative to {} was None.'.format(weight))
+            continue
+        if debug:
+            print('Weight: ', weight)
+            print('Grad: ', wgrad)
+            print('Loss: ', loss)
         wmean = tf.reduce_mean(tf.abs(wgrad))
         tf.summary.scalar('{}_weight_mean_{}'.format(scope,x), wmean)
         tf.summary.histogram('{}_weight_gradients_{}'.format(scope,x), wgrad)
         tf.summary.histogram('{}_weights_{}'.format(scope,x), weight)
-
-
 
 def reject_outliers(data, m=5):
     d = np.abs(data - np.median(data))
@@ -130,13 +137,16 @@ def is_invalid(arr):
         return not np.all(np.isfinite(arr))
     return _check_mostly_zeros(arr) or _check_infinite(arr)
 
+def log_debug(m):
+    print('[:::debug:::] ' + m)
+    
 class PlotGenSamples():
     def __init__(self, ncols=6, nrows=6, figsize=(10,5)):
         self.nrows = nrows
         self.ncols = ncols
         self.figsize = figsize
 
-    def plot_spectra(self, samples, lambdas):
+    def plot_spectra(self, x, y, name, stats=None):
         self.fig, self.ax = plt.subplots(nrows=self.nrows, ncols=self.ncols, 
                                          squeeze=False, sharex=True, 
                                          figsize=self.figsize)
@@ -145,20 +155,25 @@ class PlotGenSamples():
         for irow in range(self.nrows):
             for icol in range(self.ncols):
                 self.ax[irow, icol].grid()
-                self.ax[irow, icol].set_ylabel('Flux')
-                self.ax[irow, icol].plot(lambdas, samples[i])
+                #self.ax[irow, icol].set_ylabel('Flux')
+                self.ax[irow, icol].plot(x, y[i])
+                if stats is not None:
+                    self.ax[irow, icol].text(0.01,0.8,'$\mu='+str(round(stats[i][0],2))+'$',
+                                             transform=self.ax[irow, icol].transAxes)
+                    self.ax[irow, icol].text(0.01,0.6,'$\sigma='+str(round(stats[i][1],2))+'$',
+                                             transform=self.ax[irow, icol].transAxes)
                 i = i + 1
         plt.xlabel('Wavelength [A]')
-
+        #plt.savefig('{}.png'.format(name))
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=200)
+        plt.savefig(buf, format='png', dpi=150)
         plt.close()
         buf.seek(0)
         image = tf.image.decode_png(buf.getvalue(), channels=4)
         image = tf.expand_dims(image, 0)
         return image
 
-    def plot_mnist(self, samples, name):
+    def plot_mnist(self, samples):
         self.fig = plt.figure(figsize=(6,6))
         self.gs = gridspec.GridSpec(self.nrows,self.ncols)
         self.gs.update(wspace=0.05, hspace=0.05)
@@ -169,10 +184,10 @@ class PlotGenSamples():
             ax.set_yticklabels([])
             ax.set_aspect('equal')
             plt.imshow(sample.reshape(28,28), cmap='Greys_r')
-        plt.savefig('/fred/oz012/Bruno/figs/{}.png')
+        plt.savefig('{}.png'.format(name))
         plt.close()
 
-    def plot_cifar10(self, samples, name):
+    def plot_cifar10(self, samples):
         self.fig = plt.figure(figsize=(6,6))   
         self.gs = gridspec.GridSpec(self.nrows,self.ncols)
         self.gs.update(wspace=0.05, hspace=0.05)
@@ -183,5 +198,5 @@ class PlotGenSamples():
             ax.set_yticklabels([])
             ax.set_aspect('equal')
             plt.imshow(sample.reshape(32,32,3))
-        plt.savefig('/fred/oz012/Bruno/figs/{}.png'.format(name))
+        plt.savefig('{}.png'.format(name))
         plt.close()

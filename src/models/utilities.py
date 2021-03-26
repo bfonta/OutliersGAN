@@ -1,9 +1,21 @@
 import numpy as np
 import tensorflow as tf
 
-def noise(m,n):
-    return np.random.normal(loc=0.0, scale=1., size=[m,n])
-
+def count_trainable_params():
+    """
+    Outputs the number of all trainable parameters in the current Tensorflow graph.
+    """
+    total_parameters = 0
+    for variable in tf.trainable_variables():
+        shape = variable.get_shape()
+        print('Variable {} has shape {}.'.format(variable, shape))
+        variable_parameters = 1
+        for dim in shape:
+            variable_parameters *= dim.value
+        print('Number of parameters: ', variable_parameters)
+        total_parameters += variable_parameters
+    print('Total number of trainable parameters: ', total_parameters)
+    
 def linear_regression_layer(x, name):
     w = tf.Variable([1.0])
     b = tf.Variable([0.0])
@@ -20,6 +32,9 @@ def minibatch_discrimination(inputs, num_kernels=5, kernel_dim=3, name=''):
         abs_diffs = tf.reduce_sum(tf.abs(diffs), 2)
         minibatch_features = tf.reduce_sum(tf.exp(-abs_diffs), 2)
     return tf.concat([inputs, minibatch_features], 1, name=name)
+
+def noise(m,n):
+    return np.random.normal(loc=0.0, scale=1., size=[m,n])
 
 def tikhonov_regularizer(D_real_logits, D_real_arg, D_fake_logits, D_fake_arg, batch_size):
     D1 = tf.nn.sigmoid(D_real_logits)

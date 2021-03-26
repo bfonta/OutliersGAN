@@ -27,6 +27,7 @@ def main(argv=None):
             files_name=files_name_d[FLAGS.checkpoint],
             checkpoint_dir=checkpoint_dir,
             tensorboard_dir=tensorboard_dir,
+            debug=False
         )
 
         if FLAGS.mode == 'train':
@@ -39,7 +40,7 @@ def main(argv=None):
             dcgan.predict(n_pred=514)
 
         elif FLAGS.mode == 'save_features':
-            inp = 22791
+            inp = dataset_size_d[FLAGS.checkpoint]
             dcgan.save_features(
                 ninputs=inp,
                 save_path='/fred/oz012/Bruno/data/hdf5/tf_qso_gal_' + str(inp),
@@ -79,7 +80,7 @@ def set_param_dicts():
     idx = 998 #used for tests
     #assert (filename not in [v for k,v in d_fn.items()]), 'Please do not repeat filenames. This could lead to overwrites.'
     d_ds[idx] = d_ds[74]
-    d_pn[idx] = ('TEST_data_', 'TEST_gen_')
+    d_pn[idx] = ('figs/gen2outs/data', 'figs/gen2outs/gen')
     d_fn[idx] = d_fn[74]
     d_fp[idx] = d_fp[74] 
 

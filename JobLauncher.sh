@@ -25,4 +25,4 @@ module load tensorflowgpu/1.12.0-python-3.6.4
 ###export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 . /home/balves/keras_env/bin/activate
 
-python spectra_dcgan.py --checkpoint 999 --mode train
+python spectra_dcgan.py --checkpoint 998 --mode train
