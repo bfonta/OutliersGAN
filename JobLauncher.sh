@@ -14,7 +14,7 @@ cifar10_checkpoint=3
 #
 spectra_checkpoint=900
 name='qso2NoTanh'
-sbatch -J "${name}" --output outputs/"${name}".out --ntasks=1 --cpus-per-task=1 --ntasks-per-node=1 --time=0-10:00:00 --mem-per-cpu=8GB --gres=gpu:1 job_scripts/gpu_spectra.sh "${spectra_checkpoint}"
+sbatch -J "${name}" --output outputs/"${name}".out --ntasks=1 --cpus-per-task=1 --ntasks-per-node=1 --time=0-10:00:00 --mem-per-cpu=8GB --gres=gpu:2 job_scripts/gpu_spectra.sh "${spectra_checkpoint}"
 #
 #name='writer'
 #sbatch -J "${name}" --output outputs/"${name}".out --ntasks=1 --cpus-per-task=1 --ntasks-per-node=1 --time=40:00:00 --mem-per-cpu=1GB --gres=gpu:1 job_scripts/writer.sh

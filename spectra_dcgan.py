@@ -91,7 +91,7 @@ if __name__ == '__main__':
 
     dataset_size_d, pics_save_names_d, files_name_d, files_path_d = set_param_dicts()
 
-    nepochs = 10
+    nepochs = 1000
     checkpoint_dir = '/fred/oz012/Bruno/checkpoints/' + str(FLAGS.checkpoint) + '/'
     tensorboard_dir = '/fred/oz012/Bruno/tensorboard/' + str(FLAGS.checkpoint) + '/'
     
