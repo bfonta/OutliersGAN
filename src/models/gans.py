@@ -166,7 +166,7 @@ class _GAN(abc.ABC):
         except Exception as e:
             logging.error(traceback.format_exc())
             raise
-
+        
     def _pre_process(self, inputs, params=None):
         if self.data_name == 'mnist' or self.data_name == 'fashion_mnist':
             return np.expand_dims(inputs, axis=3)
@@ -176,8 +176,12 @@ class _GAN(abc.ABC):
             std = np.sqrt(np.mean(diff**2, axis=1, keepdims=True))
             inputs = diff / std / 30
             inputs = np.expand_dims(np.expand_dims(inputs, axis=2), axis=3)
-            concat = np.concatenate([mean,std], 1)
-            return inputs, concat
+            stats = np.concatenate([mean,std], 1)
+            if self.debug:
+                log_debug('The mean np.array has shape={}, type={}.'.format(mean.shape, mean.dtype))
+                log_debug('The std np.array has shape={}, type={}.'.format(std.shape, std.dtype))
+                log_debug('The mean/std concatenation has shape={}, type={}.'.format(stats.shape, stats.dtype))
+            return inputs, stats
         
     def _get_tensor_stats(self, inputs):
         """
@@ -213,9 +217,12 @@ class _GAN(abc.ABC):
             self.data_ph = tf.placeholder(tf.float32, 
                                           shape=[None, self.in_height, self.in_width, self.nchannels], 
                                           name='data_ph')
-            data_stats = self._get_tensor_stats(self.data_ph)
+            self.stats_ph = tf.placeholder(tf.float32, 
+                                          shape=[None, 2], 
+                                          name='stats_ph')
+            #data_stats = self._get_tensor_stats(self.data_ph)
             self.D_real_logits, self.D_real = discriminator(x=self.data_ph,
-                                                            stats=data_stats,
+                                                            stats=self.stats_ph,
                                                             drop=self.dropout_prob_ph)
 
         with tf.variable_scope('D', reuse=True):
@@ -242,9 +249,11 @@ class _GAN(abc.ABC):
             self.lambda_gp = tf.placeholder_with_default(10., shape=(), name='lambda_gp_ph')
             self.D_loss += self.lambda_gp * gradient_penalty * tf.maximum(0., -self.D_loss)
 
-            self.l1_factor = tf.placeholder_with_default(50., shape=(), name='l1_factor_ph')
-            self.G_loss = ( -tf.reduce_mean(self.D_fake_logits) +
-                            self.l1_factor*tf.reduce_sum(tf.math.abs(self.G_stats-data_stats)) )
+            self.l1_factor = tf.placeholder_with_default(1e-4, shape=(), name='l1_factor_ph')
+            self.wgangp_factor = tf.placeholder_with_default(1e3, shape=(), name='l1_factor_ph')
+            self.G_l1_loss = self.l1_factor*tf.reduce_sum(tf.math.abs(self.G_stats-self.stats_ph))
+            self.G_wgan_loss = -self.wgangp_factor*tf.reduce_mean(self.D_fake_logits)
+            self.G_loss = tf.math.abs(self.G_wgan_loss + self.G_l1_loss)
 
         else:
             cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits
@@ -274,7 +283,9 @@ class _GAN(abc.ABC):
                          scope='D', debug=self.debug)
 
         with tf.variable_scope('Generator'):
-            tf.summary.scalar('loss_g', self.G_loss)
+            tf.summary.scalar('g_loss', self.G_loss)
+            tf.summary.scalar('g_loss_l1', self.G_l1_loss)
+            tf.summary.scalar('g_loss_wgan', self.G_wgan_loss)
             log_tf_files(layers_names=self.g_layers_names, loss=self.G_loss,
                          scope='G', debug=self.debug)
         
@@ -349,6 +360,7 @@ class _GAN(abc.ABC):
                                                                       self.D_real,
                                                                       self.D_fake],
                                         feed_dict={self.data_ph: inputs,
+                                                   self.stats_ph: stats,
                                                    self.gen_data_ph: noise_D,
                                                    self.dropout_prob_ph: dropout_prob_D,
                                                    self.batch_size_ph: len_inputs,
@@ -373,6 +385,7 @@ class _GAN(abc.ABC):
                 #train generator
                 _, G_loss_c  = self.sess.run([self.G_train_op, self.G_loss],
                                       feed_dict={self.data_ph: inputs,
+                                                 self.stats_ph: stats,
                                                  self.gen_data_ph: noise_G,
                                                  self.dropout_prob_ph: dropout_prob_G,
                                                  self.batch_size_ph: len_inputs,
@@ -388,22 +401,9 @@ class _GAN(abc.ABC):
 
 
             if self.data_name in self.image_datasets:
-                self.side = 9
                 scope_name = 'Something'
             else:
-                self.side = 1
                 scope_name = 'Spectra'
-
-            def create_image_for_summary(ydata):
-                fig = plt.figure()
-                plt.plot(xdata, ydata[0,:,0,0])
-                buf = io.BytesIO()
-                plt.savefig(buf, format='png')
-                plt.close(fig)
-                buf.seek(0)
-                image = tf.image.decode_png(buf.getvalue(), channels=4)
-                image = tf.expand_dims(image, 0)
-                return image
         
             with tf.variable_scope(scope_name):
                 def denormalize(x, stats):
@@ -426,15 +426,17 @@ class _GAN(abc.ABC):
                                                                    x=np.arange(3500)))
                 summary_images = tf.summary.merge([im_real_norm, im_real, im_fake_norm, im_fake])
 
-            if epoch%3==0:
+            if epoch%10==0:
                 summ = self.sess.run(summary, 
                                      feed_dict={self.data_ph: inputs,
+                                                self.stats_ph: stats,
                                                 self.gen_data_ph: noise_G,
                                                 self.dropout_prob_ph: dropout_prob_G,
                                                 self.batch_size_ph: len(inputs),
                                                 self.real_labels_ph: real, self.fake_labels_ph: fake})
                 train_writer.add_summary(summ, epoch*self.nbatches+(batch+1))
-                summ_images = self.sess.run(summary_images, feed_dict={self.data_ph: inputs})
+                summ_images = self.sess.run(summary_images,
+                                            feed_dict={self.data_ph: inputs})
                 train_writer.add_summary(summ_images, epoch*self.nbatches+(batch+1))
 
     def _plot(self, name, y, x, stats=None, n=5, mode='normal'):
@@ -760,13 +762,19 @@ class DCGAN(_GAN):
             net = minibatch_discrimination(net, num_kernels=30, kernel_dim=20, 
                                            name='minibatch_discrimination')
 
-
         self.d_layers_names += ('dense1',)
-        net = tf.layers.dense(net, 8, activation=None, name=self.d_layers_names[-1])
+        net = tf.layers.dense(net, 1, activation=None, name=self.d_layers_names[-1])
         if self.debug:
             log_debug('Layer {} has shape {}.'.format(self.d_layers_names[-1], net.get_shape()))
 
-        net = tf.concat(values=[net, stats], axis=1, name='concat')
+        #normalize means and stds
+        stats_mean = tf.reduce_mean(stats, axis=0, keepdims=True)
+        stats_diff = stats - stats_mean
+        stats_std = tf.math.sqrt(tf.reduce_mean(stats_diff**2, axis=0, keepdims=True))
+        stats = stats_diff / stats_std
+        if self.debug:
+            log_debug('Discriminator statistics have shape {}.'.format(stats.get_shape()))
+        net = tf.concat(values=[net, stats], axis=1, name='norm_stats')
         if self.debug:
             log_debug('Layer {} has shape {}.'.format(self.d_layers_names[-1], net.get_shape()))
 
@@ -794,9 +802,9 @@ class DCGAN(_GAN):
             nn = tf.layers.dropout(nn, rate=drop)
             return nn
         
-        net = tf.reshape(noise, shape=[-1, noise.shape[1]])
+        noise = tf.reshape(noise, shape=[-1, noise.shape[1]])
         self.g_layers_names += ('dense_input',)
-        net = tf.layers.dense(net, init_height*init_width*self.filters[-1], 
+        net = tf.layers.dense(noise, init_height*init_width*self.filters[-1], 
                               activation=None, name=self.g_layers_names[-1])
         net = tf.layers.dropout(net, rate=drop)
         net = tf.reshape(net, shape=[-1,init_height,init_width,self.filters[-1]])
@@ -850,13 +858,15 @@ class DCGAN(_GAN):
             out1 = tf.nn.tanh(net)
 
 
+            """
             self.g_layers_names += ('mean_std_1',)
             out2 = tf.layers.dense(net[:,:,0,0], 256, name=self.g_layers_names[-1])
             if self.debug:
                 log_debug('Layer {} has shape {}.'.format(self.g_layers_names[-1], out2.get_shape()))
+            """
 
             self.g_layers_names += ('mean_std_2',)
-            out2 = tf.layers.dense(out2, 2, name=self.g_layers_names[-1])
+            out2 = tf.layers.dense(noise, 2, name=self.g_layers_names[-1])
             if self.debug:
                 log_debug('Layer {} has shape {}.'.format(self.g_layers_names[-1], out2.get_shape()))
 

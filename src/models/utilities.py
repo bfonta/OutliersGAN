@@ -1,20 +1,22 @@
 import numpy as np
 import tensorflow as tf
+from ..utilities import log_debug
 
 def count_trainable_params():
     """
     Outputs the number of all trainable parameters in the current Tensorflow graph.
     """
     total_parameters = 0
+    log_debug('>>> [count_trainable_params]') 
     for variable in tf.trainable_variables():
         shape = variable.get_shape()
-        print('Variable {} has shape {}.'.format(variable, shape))
+        log_debug('Variable {} has shape {}.'.format(variable, shape))
         variable_parameters = 1
         for dim in shape:
             variable_parameters *= dim.value
-        print('Number of parameters: ', variable_parameters)
+        log_debug('Number of parameters: {}'.format(variable_parameters))
         total_parameters += variable_parameters
-    print('Total number of trainable parameters: ', total_parameters)
+    log_debug('Total number of trainable parameters: {}'.format(total_parameters))
     
 def linear_regression_layer(x, name):
     w = tf.Variable([1.0])

@@ -46,6 +46,8 @@ def plot_predictions(pred, name):
 
 def log_tf_files(layers_names, loss, scope, debug):
     gr = tf.get_default_graph()
+    if debug:
+        log_debug('>>> [log_tf_files: loss={}, scope={}]'.format(loss, scope))
     for x in layers_names:
         name = '{}/{}/bias:0'.format(scope,x)
         try:
@@ -70,9 +72,9 @@ def log_tf_files(layers_names, loss, scope, debug):
             print('The gradient of the loss relative to {} was None.'.format(weight))
             continue
         if debug:
-            print('Weight: ', weight)
-            print('Grad: ', wgrad)
-            print('Loss: ', loss)
+            log_debug('Weight: {}'.format(weight))
+            log_debug('Grad: {}'.format(wgrad))
+            log_debug('Loss: {}'.format(loss))
         wmean = tf.reduce_mean(tf.abs(wgrad))
         tf.summary.scalar('{}_weight_mean_{}'.format(scope,x), wmean)
         tf.summary.histogram('{}_weight_gradients_{}'.format(scope,x), wgrad)
@@ -158,13 +160,13 @@ class PlotGenSamples():
                 #self.ax[irow, icol].set_ylabel('Flux')
                 self.ax[irow, icol].plot(x, y[i])
                 if stats is not None:
-                    self.ax[irow, icol].text(0.01,0.8,'$\mu='+str(round(stats[i][0],2))+'$',
+                    self.ax[irow, icol].text(0.01,0.8,'$\mu='+str(round(stats[i][0],3))+'$',
                                              transform=self.ax[irow, icol].transAxes)
-                    self.ax[irow, icol].text(0.01,0.6,'$\sigma='+str(round(stats[i][1],2))+'$',
+                    self.ax[irow, icol].text(0.01,0.6,'$\sigma='+str(round(stats[i][1],3))+'$',
                                              transform=self.ax[irow, icol].transAxes)
                 i = i + 1
         plt.xlabel('Wavelength [A]')
-        #plt.savefig('{}.png'.format(name))
+        plt.savefig('{}.png'.format(name))
         buf = io.BytesIO()
         plt.savefig(buf, format='png', dpi=150)
         plt.close()
