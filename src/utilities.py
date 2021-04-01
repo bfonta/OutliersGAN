@@ -57,9 +57,9 @@ def log_tf_files(layers_names, loss, scope, debug):
             continue
         bmean = tf.reduce_mean(bias, keepdims=True)
         bstd = tf.sqrt(tf.reduce_mean((bmean-bias)**2))
-        tf.summary.scalar('{}_bias_mean_{}'.format(scope,x), tf.squeeze(bmean))
-        tf.summary.scalar('{}_bias_std_{}'.format(scope,x), bstd)
-        tf.summary.histogram('{}_bias_{}'.format(scope,x), bias)
+        tf.summary.scalar('bias/mean_{}'.format(x), tf.squeeze(bmean))
+        tf.summary.scalar('bias/std_{}'.format(x), bstd)
+        tf.summary.histogram('bias/{}'.format(x), bias)
 
         name = '{}/{}/kernel:0'.format(scope,x)
         try:
@@ -76,9 +76,9 @@ def log_tf_files(layers_names, loss, scope, debug):
             log_debug('Grad: {}'.format(wgrad))
             log_debug('Loss: {}'.format(loss))
         wmean = tf.reduce_mean(tf.abs(wgrad))
-        tf.summary.scalar('{}_weight_mean_{}'.format(scope,x), wmean)
-        tf.summary.histogram('{}_weight_gradients_{}'.format(scope,x), wgrad)
-        tf.summary.histogram('{}_weights_{}'.format(scope,x), weight)
+        tf.summary.scalar('weights/mean_{}'.format(x), wmean)
+        tf.summary.histogram('weights/gradients_{}'.format(x), wgrad)
+        tf.summary.histogram('weights/{}'.format(x), weight)
 
 def reject_outliers(data, m=5):
     d = np.abs(data - np.median(data))

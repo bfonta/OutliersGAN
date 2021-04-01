@@ -182,24 +182,6 @@ class _GAN(abc.ABC):
                 log_debug('The std np.array has shape={}, type={}.'.format(std.shape, std.dtype))
                 log_debug('The mean/std concatenation has shape={}, type={}.'.format(stats.shape, stats.dtype))
             return inputs, stats
-        
-    def _get_tensor_stats(self, inputs):
-        """
-        Returns statistics of a Tensor (sample mean and std)
-        """
-        if self.data_name == 'spectra':
-            #inputs = tf.reshape(inputs, shape=[-1, self.in_height, self.in_width, self.nchannels])
-            if self.debug:
-                log_debug('The input tensor has shape {}.'.format(inputs.get_shape()))
-            mean = tf.reduce_mean(inputs, axis=1, keepdims=True)
-            diff = inputs - mean
-            std = tf.sqrt(tf.reduce_mean(diff**2, axis=1, keepdims=True))
-            concat = tf.concat([mean[:,:,0,0],std[:,:,0,0]], 1)
-            if self.debug:
-                log_debug('The concatenation of statistics has shape {}.'.format(concat.get_shape()))
-            return concat
-        else:
-            raise ValueError('Not supported.')
 
     def _build_model(self, generator, discriminator, lr=0.0002, beta1=0.5, beta2=0.999):
         self.batch_size_ph = tf.placeholder(tf.int32, shape=[], name='batch_size_ph') 
@@ -220,7 +202,6 @@ class _GAN(abc.ABC):
             self.stats_ph = tf.placeholder(tf.float32, 
                                           shape=[None, 2], 
                                           name='stats_ph')
-            #data_stats = self._get_tensor_stats(self.data_ph)
             self.D_real_logits, self.D_real = discriminator(x=self.data_ph,
                                                             stats=self.stats_ph,
                                                             drop=self.dropout_prob_ph)
@@ -232,28 +213,40 @@ class _GAN(abc.ABC):
 
         #Gradient Penalty
         if self.mode=='wgan-gp':
-            epsilon = tf.random_uniform(shape=[self.batch_size_ph,1,1,1], 
-                                        minval=0., maxval=1., name='epsilon')
+            epsdict = dict(minval=0., maxval=1.)
+            epsilon = tf.random_uniform(shape=[self.batch_size_ph,1,1,1], name='epsilon', **epsdict)
+            #epsilon_stats = tf.random_uniform(shape=[self.batch_size_ph,1], name='epsilon_stats', **epsdict)
             interpolate = self.G_sample + epsilon * ( self.data_ph - self.G_sample )
+            #interpolate_stats = self.G_stats + epsilon_stats * ( self.stats_ph - self.G_stats )
+
+            if self.debug:
+                log_debug('Interpolation sample layer has shape {}.'.format(interpolate.get_shape()))
+                log_debug('Real stats layer has shape {}.'.format(self.stats_ph.get_shape()))
+                log_debug('Fake stats layer has shape {}.'.format(self.G_stats.get_shape()))
+                #log_debug('Interpolation stats layer has shape {}.'.format(interpolate_stats.get_shape()))
 
             with tf.variable_scope('D', reuse=True):
-                gradients = tf.gradients(discriminator(x=interpolate,
-                                                       stats=self.G_stats,
-                                                       drop=self.dropout_prob_ph),
-                                         [interpolate])[0]
+                discr = discriminator(x=interpolate,
+                                      #stats=interpolate_stats,
+                                      stats=self.G_stats,
+                                      drop=self.dropout_prob_ph)
+                gradients = tf.gradients(discr, [interpolate])[0]
+                #gradients_stats = tf.gradients(discr, [interpolate_stats])[0]
 
             slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients)))
             gradient_penalty = tf.reduce_mean( tf.square(slopes - 1.) )
+            #slopes_stats = tf.sqrt(tf.reduce_sum(tf.square(gradients_stats)))
+            #gradient_penalty_stats = tf.reduce_mean( tf.square(slopes_stats - 1.) )
             self.D_loss = tf.reduce_mean(self.D_fake_logits) - tf.reduce_mean(self.D_real_logits)
-            
             self.lambda_gp = tf.placeholder_with_default(10., shape=(), name='lambda_gp_ph')
+            #self.D_loss += self.lambda_gp * (gradient_penalty + gradient_penalty_stats) * tf.maximum(0., -self.D_loss)
             self.D_loss += self.lambda_gp * gradient_penalty * tf.maximum(0., -self.D_loss)
 
-            self.l1_factor = tf.placeholder_with_default(1e-4, shape=(), name='l1_factor_ph')
-            self.wgangp_factor = tf.placeholder_with_default(1e3, shape=(), name='l1_factor_ph')
+            self.l1_factor = tf.placeholder_with_default(1e-3, shape=(), name='l1_factor_ph')
+            self.wgangp_factor = tf.placeholder_with_default(1e3, shape=(), name='wgangp_factor_ph')
             self.G_l1_loss = self.l1_factor*tf.reduce_sum(tf.math.abs(self.G_stats-self.stats_ph))
             self.G_wgan_loss = -self.wgangp_factor*tf.reduce_mean(self.D_fake_logits)
-            self.G_loss = tf.math.abs(self.G_wgan_loss + self.G_l1_loss)
+            self.G_loss = self.G_wgan_loss + self.G_l1_loss
 
         else:
             cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits
@@ -312,8 +305,6 @@ class _GAN(abc.ABC):
                 if 'final' in x:
                     print(x)
             """
-
-
         summary = self.define_tf_summary()
         train_writer = tf.summary.FileWriter(self.tensorboard_dir, self.sess.graph)
 
@@ -364,8 +355,8 @@ class _GAN(abc.ABC):
                                                    self.gen_data_ph: noise_D,
                                                    self.dropout_prob_ph: dropout_prob_D,
                                                    self.batch_size_ph: len_inputs,
-                                                   self.real_labels_ph: real, self.fake_labels_ph: fake})
-
+                                                   self.real_labels_ph: real,
+                                                   self.fake_labels_ph: fake})
 
                 noise_G = noise(len(inputs), self.noise_dim)
 
@@ -383,22 +374,26 @@ class _GAN(abc.ABC):
                 fake = np.zeros(shape=(len_inputs,1))
                 """
                 #train generator
-                _, G_loss_c  = self.sess.run([self.G_train_op, self.G_loss],
-                                      feed_dict={self.data_ph: inputs,
-                                                 self.stats_ph: stats,
-                                                 self.gen_data_ph: noise_G,
-                                                 self.dropout_prob_ph: dropout_prob_G,
-                                                 self.batch_size_ph: len_inputs,
-                                                 self.real_labels_ph: real, self.fake_labels_ph: fake})
-
+                _, G_loss_c  = self.sess.run(
+                    [self.G_train_op, self.G_loss],
+                    feed_dict={self.data_ph:         inputs,
+                               self.stats_ph:        stats,
+                               self.gen_data_ph:     noise_G,
+                               self.dropout_prob_ph: dropout_prob_G,
+                               self.batch_size_ph:   len_inputs,
+                               self.real_labels_ph:  real,
+                               self.fake_labels_ph:  fake})
+                
             saver.save(self.sess, self.checkpoint_dir, global_step=1000)
 
-            sample, gen_stats = self.sess.run([self.G_sample, self.G_stats],
-                                              feed_dict={self.gen_data_ph: noise_G,
-                                                         self.dropout_prob_ph: dropout_prob_G,
-                                                         self.batch_size_ph: self.batch_size,
-                                                         self.real_labels_ph: real, self.fake_labels_ph: fake})
-
+            sample, gen_stats = self.sess.run(
+                [self.G_sample, self.G_stats],
+                feed_dict={self.gen_data_ph:     noise_G,
+                           self.dropout_prob_ph: dropout_prob_G,
+                           self.batch_size_ph:   self.batch_size,
+                           self.real_labels_ph:  real,
+                           self.fake_labels_ph:  fake})
+            
 
             if self.data_name in self.image_datasets:
                 scope_name = 'Something'
@@ -410,30 +405,35 @@ class _GAN(abc.ABC):
                     return ( x[:,:,0,0]*np.expand_dims(stats[:,1],1) +
                              np.expand_dims(stats[:,0],1) )
                 
-                im_real_norm = tf.summary.image('RealNorm', self._plot(name=self.pics_save_names[0]+str(epoch),
-                                                                       y=inputs[:,:,0,0],
-                                                                       x=np.arange(3500),
-                                                                       stats=stats))
-                im_real = tf.summary.image('Real', self._plot(name=self.pics_save_names[0]+str(epoch),
-                                                              y=denormalize(inputs,stats),
-                                                              x=np.arange(3500)))
-                im_fake_norm = tf.summary.image('FakeNorm', self._plot(name=self.pics_save_names[1]+str(epoch),
-                                                                       y=sample[:,:,0,0],
-                                                                       x=np.arange(3500),
-                                                                       stats=gen_stats))
-                im_fake = tf.summary.image('Fake', self._plot(name=self.pics_save_names[1]+str(epoch),
-                                                                   y=denormalize(sample,stats),
-                                                                   x=np.arange(3500)))
+                im_real_norm = tf.summary.image('RealNorm',
+                                                self._plot(name=self.pics_save_names[0]+str(epoch),
+                                                           y=inputs[:,:,0,0],
+                                                           x=np.arange(3500),
+                                                           stats=stats))
+                im_real = tf.summary.image('Real',
+                                           self._plot(name=self.pics_save_names[0]+str(epoch),
+                                                      y=denormalize(inputs,stats),
+                                                      x=np.arange(3500)))
+                im_fake_norm = tf.summary.image('FakeNorm',
+                                                self._plot(name=self.pics_save_names[1]+str(epoch),
+                                                           y=sample[:,:,0,0],
+                                                           x=np.arange(3500),
+                                                           stats=gen_stats))
+                im_fake = tf.summary.image('Fake',
+                                           self._plot(name=self.pics_save_names[1]+str(epoch),
+                                                      y=denormalize(sample,stats),
+                                                      x=np.arange(3500)))
                 summary_images = tf.summary.merge([im_real_norm, im_real, im_fake_norm, im_fake])
-
+                
             if epoch%10==0:
                 summ = self.sess.run(summary, 
-                                     feed_dict={self.data_ph: inputs,
-                                                self.stats_ph: stats,
-                                                self.gen_data_ph: noise_G,
+                                     feed_dict={self.data_ph:         inputs,
+                                                self.stats_ph:        stats,
+                                                self.gen_data_ph:     noise_G,
                                                 self.dropout_prob_ph: dropout_prob_G,
-                                                self.batch_size_ph: len(inputs),
-                                                self.real_labels_ph: real, self.fake_labels_ph: fake})
+                                                self.batch_size_ph:   len(inputs),
+                                                self.real_labels_ph:  real,
+                                                self.fake_labels_ph:  fake})
                 train_writer.add_summary(summ, epoch*self.nbatches+(batch+1))
                 summ_images = self.sess.run(summary_images,
                                             feed_dict={self.data_ph: inputs})
@@ -700,6 +700,7 @@ class DCGAN(_GAN):
             self.filters = [128, 256, 512]
         elif self.data_name == 'spectra':
             self.filters = [128, 256, 512, 1024]
+            #self.filters = [64, 128, 256, 512]
 
     def _discriminator(self, x, stats, drop):
         def conv_block(nn, conv_channels, kernel_size, strides, name):
@@ -763,7 +764,7 @@ class DCGAN(_GAN):
                                            name='minibatch_discrimination')
 
         self.d_layers_names += ('dense1',)
-        net = tf.layers.dense(net, 1, activation=None, name=self.d_layers_names[-1])
+        net = tf.layers.dense(net, 8, activation=None, name=self.d_layers_names[-1])
         if self.debug:
             log_debug('Layer {} has shape {}.'.format(self.d_layers_names[-1], net.get_shape()))
 
@@ -776,8 +777,7 @@ class DCGAN(_GAN):
             log_debug('Discriminator statistics have shape {}.'.format(stats.get_shape()))
         net = tf.concat(values=[net, stats], axis=1, name='norm_stats')
         if self.debug:
-            log_debug('Layer {} has shape {}.'.format(self.d_layers_names[-1], net.get_shape()))
-
+            log_debug('Concatenation has shape {}.'.format(net.get_shape()))
 
         self.d_layers_names += ('dense_output',)
         net = tf.layers.dense(net, 1, activation=None, name=self.d_layers_names[-1])
@@ -843,7 +843,7 @@ class DCGAN(_GAN):
                              kernel_size=[10,1], strides=[5,1], name=self.g_layers_names[-1])
             if self.debug:
                 log_debug('Layer {} has shape {}.'.format(self.g_layers_names[-1], net.get_shape()))
-
+            
             self.g_layers_names += ('layer4',)
             net = tf.layers.conv2d_transpose(net, filters=self.nchannels, 
                                              kernel_size=[10,1], strides=[5,1], 
@@ -855,24 +855,25 @@ class DCGAN(_GAN):
             if self.mode != 'wgan-gp':
                 net = tf.layers.batch_normalization(net, training=self.batch_norm_ph)
 
-            out1 = tf.nn.tanh(net)
-
-
-            """
-            self.g_layers_names += ('mean_std_1',)
-            out2 = tf.layers.dense(net[:,:,0,0], 256, name=self.g_layers_names[-1])
-            if self.debug:
-                log_debug('Layer {} has shape {}.'.format(self.g_layers_names[-1], out2.get_shape()))
-            """
-
-            self.g_layers_names += ('mean_std_2',)
-            out2 = tf.layers.dense(noise, 2, name=self.g_layers_names[-1])
-            if self.debug:
-                log_debug('Layer {} has shape {}.'.format(self.g_layers_names[-1], out2.get_shape()))
-
-
             shp1 = [-1, self.in_height, self.in_width, self.nchannels]
-            out1  = tf.reshape(out1, shape=shp1, name='output1')
+            out1  = tf.reshape(net, shape=shp1, name='output1')
+
+            self.g_layers_names += ('dense_for_norm',)    
+            dense_for_norm = tf.layers.dense(tf.reshape(out1, [-1,self.in_height]), 100, name=self.g_layers_names[-1])
+            if self.debug:
+                log_debug('Layer {} has shape {}.'.format(self.g_layers_names[-1], dense_for_norm.get_shape()))
+
+            out1 = tf.nn.tanh(out1)
+
+            self.g_layers_names += ('concat_for_norm',)
+            out2 = tf.concat([noise, dense_for_norm], axis=1)
+            if self.debug:
+                log_debug('Layer {} has shape {}.'.format(self.g_layers_names[-1], out2.get_shape()))
+
+            self.g_layers_names += ('out_norm',)
+            out2 = tf.layers.dense(out2, 2, name=self.g_layers_names[-1])
+            if self.debug:
+                log_debug('Layer {} has shape {}.'.format(self.g_layers_names[-1], out2.get_shape()))
 
             shp2 = [-1, 2] #mean and std
             out2 = tf.reshape(out2, shape=shp2, name='output2')
