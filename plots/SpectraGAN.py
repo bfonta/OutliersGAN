@@ -19,7 +19,7 @@ from bokeh.models import LinearAxis
 from bokeh.models import ColumnDataSource
 from bokeh.models import SingleIntervalTicker
 
-from bokeh.palettes import Set3
+from bokeh.palettes import Category10
 from bokeh.plotting import figure, show
 from bokeh.layouts import layout
 
@@ -29,12 +29,13 @@ TOTALWIDTH, WIDTHRATIO = 2500, 0.7
 WIDTH, HEIGHT = int(TOTALWIDTH*WIDTHRATIO), 550
 WIDTH2, HEIGHT2 = int(TOTALWIDTH*(1-WIDTHRATIO)), HEIGHT/2
 NPOINTS = 3500
-NEPOCHS = 5
+NEPOCHS = 200
 NSTATS = 2000
 NBINS = 100
-NSPECTRA = 5
+NSPECTRA = 8
 NDIGITS = int(np.floor(np.log10(np.abs(NEPOCHS))) + 1) #number of digits in a integer
-YSHIFT = 0.3
+YSHIFT = 0.15
+LOGAXIS = False
 
 def add_legend(fig, obj, label, **kwargs):
     leg = Legend(
@@ -82,7 +83,10 @@ def add_axis(fig, xlabel=None, ylabel=None, xinterval=500, yinterval=None, xboun
         fig.add_layout(yaxis, 'left')
 
 def create_figure(w, h, title, xlims=None, ylims=None, xaxislog=False):
-    p = figure(plot_width=w, plot_height=h, x_axis_type='log' if xaxislog else 'linear')
+    TOOLTIPS = [('wavelength', '$x ' + u'\u212b')]
+    p = figure(plot_width=w, plot_height=h, x_axis_type='log' if xaxislog else 'linear',
+               tools='hover,pan,wheel_zoom,box_zoom,reset', toolbar_location='above',
+               tooltips=TOOLTIPS)
     p.toolbar.logo = None
     #p.toolbar_location = None
     p.axis.visible = False
@@ -103,9 +107,12 @@ def add_bars(fig, xname, yname, width, renderer_source, color):
 def add_vline(fig, xname, yname, width, renderer_source, color):
     return fig.line(x=xname, y=yname, line_width=width, color=color, source=renderer_source)
 
+def add_vline_static(fig, x, y, width, color):
+    return fig.line(x=x, y=y, line_width=width, color=color)
+
 with h5py.File(FILENAME, 'r') as f1:
     y, means, stds = ([] for _ in range(3))
-    npoints = len(f1['flux']['flux_{}'.format('0'.zfill(NDIGITS))][:])
+    npoints = len(f1['flux']['flux_{}'.format('0'.zfill(NDIGITS))][0,:])
     w_i = f1['meta']['wavelength'][0]
     w_d = f1['meta']['wavelength'][1]
     arr_x = np.arange(w_i, w_i+w_d*npoints, w_d)
@@ -114,7 +121,7 @@ with h5py.File(FILENAME, 'r') as f1:
         y.append( np.expand_dims(f1['fluxsamp']['flux_samp_'+estr][:NSPECTRA,:], axis=0) )
         means.append( f1['meanssamp']['means_samp_'+estr][:] )
         stds.append( f1['stdssamp']['stds_samp_'+estr][:] )
-    yreal = f1['flux']['flux_{}'.format('0'.zfill(NDIGITS))][:]
+    yreal = f1['flux']['flux_{}'.format('0'.zfill(NDIGITS))][:NSPECTRA,:]
     meansreal = f1['means']['means_{}'.format('0'.zfill(NDIGITS))][:]
     stdsreal = f1['stds']['stds_{}'.format('0'.zfill(NDIGITS))][:]
 arr_y = np.vstack(tuple(x for x in y))
@@ -184,14 +191,18 @@ hmeanmaxreal, hmeanminreal = get_min_max(hmeanreal, hstdmaxreal, hstdminreal)
 hstdmaxreal, hstdminreal = get_min_max(hstdreal, hstdmaxreal, hstdminreal)
 cmeanmaxreal, cmeanminreal = get_min_max(cmeanreal, cmeanmaxreal, cmeanminreal)
 cstdmaxreal, cstdminreal = get_min_max(cstdreal, cstdmaxreal, cstdminreal)
-sreal1 = ColumnDataSource(data={xs1: arr_x.tolist(),
-                               ys1: yreal.tolist()})
+sreal1 = ColumnDataSource(data={xs1: arr_x.tolist()})
+for i in range(NSPECTRA):
+    sreal1.data[ys1+str(i)] = (yreal[i]+i*YSHIFT).tolist()
+
 sreal2 = ColumnDataSource(data={xs2[0]: cmeanreal.tolist(),
                                 ys2[0]: hmeanreal.tolist(),
                                 xs2[1]: cstdreal.tolist(),
                                 ys2[1]: hstdreal.tolist(),
                                 wstr[0]: [cmeanreal[1]-cmeanreal[0] for _ in range(len(cmeanreal))],
                                 wstr[1]: [cstdreal[1]-cstdreal[0] for _ in range(len(cstdreal))]})
+sreal2mean_mean = np.dot(cmeanreal,hstdreal)/np.sum(hstdreal)
+sreal2mean_std = np.dot(cstdreal,hstdreal)/np.sum(hstdreal)
 
 sextraname = 'sextra'
 sextra = ColumnDataSource(data={xse[0]: [initmeanx,initmeanx], yse[0]: [hmeanmin, hmeanmax],
@@ -206,23 +217,23 @@ js_sources_1 = str(dict_sources_1).replace("'", "")
 js_sources_2 = str(dict_sources_2).replace("'", "")
 js_sources_e = sextraname
 
-spectra_ylims = [-0.15,1.5]
+spectra_ylims = [-0.15,1.4]
 spectra_yint = (spectra_ylims[0]-spectra_ylims[0])/6
 pfake = create_figure(WIDTH, HEIGHT, 'Generated QSO Spectra', ylims=spectra_ylims)
 add_axis(pfake, xlabel='Wavelength [' + u'\u212b' + ']', ylabel='Normalized Flux',
          ybounds=spectra_ylims, xinterval=w_d*npoints/5, yinterval=spectra_yint)
 for i in range(NSPECTRA):
-    add_graph(pfake, xs1, ys1+str(i), s1[RENDERERS[0]], color=Set3[NSPECTRA][i])
+    add_graph(pfake, xs1, ys1+str(i), s1[RENDERERS[0]], color=Category10[NSPECTRA][i])
 
 preal = create_figure(WIDTH, HEIGHT, 'Real Spectra', ylims=spectra_ylims)
 add_axis(preal, xlabel='Wavelength [' + u'\u212b' + ']', ylabel='Normalized Flux',
          ybounds=spectra_ylims, xinterval=w_d*npoints/5, yinterval=spectra_yint)
 for i in range(NSPECTRA):
-    add_graph(preal, xs1, ys1, sreal1, '#660044')
+    add_graph(preal, xs1, ys1+str(i), sreal1, color=Category10[NSPECTRA][i])
 
 p_mean = create_figure(int(WIDTH2), int(HEIGHT2), 'Generated Means',
                        xlims=[cmeanmin,cmeanmax], ylims=[hmeanmin,hmeanmax],
-                       xaxislog=True)
+                       xaxislog=LOGAXIS)
 add_axis(p_mean, xlabel=' ', ylabel='Counts',
          xinterval=(cmeanmax-cmeanmin)/10, yinterval=hmeanmax/5)
 add_bars(p_mean, xs2[0], ys2[0], wstr[0], s2[RENDERERS[1]], '#660044')
@@ -230,17 +241,18 @@ line = add_vline(p_mean, xse[0], yse[0], 3., sextra, '#008000')
 add_legend(fig=p_mean, obj=line, label='Mean')
 
 p_mean_real = create_figure(int(WIDTH2), int(HEIGHT2), 'Real Means',
-                            xlims=[cmeanminreal,cmeanmaxreal], ylims=[hmeanminreal,hmeanmaxreal],
-                            xaxislog=True)
+                            xlims=[cmeanminreal,40],#xlims=[cmeanminreal,cmeanmaxreal],
+                            ylims=[hmeanminreal,hmeanmaxreal],
+                            xaxislog=LOGAXIS)
 add_axis(p_mean_real, xlabel=' ', ylabel='Counts',
-         xinterval=(cmeanmaxreal-cmeanminreal)/10, yinterval=hmeanmaxreal/5)
+         xinterval=(cmeanmaxreal-cmeanminreal)/40, yinterval=hmeanmaxreal/5)
 add_bars(p_mean_real, xs2[0], ys2[0], wstr[0], sreal2, '#660044')
-line = add_vline(p_mean_real, xse[0], yse[0], 3., sextra_real, '#008000')
+line = add_vline_static(p_mean_real, x=sreal2mean_mean, y=[hmeanminreal,hmeanmaxreal], width=3., color='#008000')
 add_legend(fig=p_mean_real, obj=line, label='Mean')
 
 p_std = create_figure(int(WIDTH2), int(HEIGHT2), 'Generated Standard Deviations',
                       xlims=[cstdmin,cstdmax], ylims=[hstdmin,hstdmax],
-                      xaxislog=True)
+                      xaxislog=LOGAXIS)
 add_axis(p_std, xlabel=' ', ylabel='Counts',
          xinterval=(cstdmax-cstdmin)/10, yinterval=hstdmaxreal/5)
 add_bars(p_std, xs2[1], ys2[1], wstr[1], s2[RENDERERS[1]], '#660044')
@@ -248,13 +260,14 @@ line = add_vline(p_std, xse[1], yse[1], 3., sextra, '#008000')
 add_legend(fig=p_std, obj=line, label='Mean')
 
 p_std_real = create_figure(int(WIDTH2), int(HEIGHT2), 'Real Standard Deviations',
-                           xlims=[cstdminreal,cstdmaxreal], ylims=[hstdminreal,hstdmaxreal],
-                           xaxislog=True)
+                           xlims=[cstdminreal,20],#xlims=[cstdminreal,cstdmaxreal],
+                           ylims=[hstdminreal,hstdmaxreal],
+                           xaxislog=LOGAXIS)
 add_axis(p_std_real, xlabel=' ', ylabel='Counts',
-         xinterval=(cstdmaxreal-cstdminreal)/10, yinterval=hstdmaxreal/5)
+         xinterval=(cstdmaxreal-cstdminreal)/40, yinterval=hstdmaxreal/5)
 add_bars(p_std_real, xs2[1], ys2[1], wstr[1], sreal2, '#660044')
-line = add_vline(p_std_real, xse[1], yse[1], 3., sextra_real, '#008000')
-add_legend(fig=p_std_real, obj=line, label='Mean')
+line_mean = add_vline_static(p_std_real, x=sreal2mean_std, y=[hstdminreal,hstdmaxreal], width=3., color='#008000')
+add_legend(fig=p_std_real, obj=line_mean, label='Mean')
 
 code = """
     var epoch = slider.value;
